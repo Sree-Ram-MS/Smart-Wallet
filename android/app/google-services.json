@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "720304451502",
+    "project_id": "smart-wallet-by-ram",
+    "storage_bucket": "smart-wallet-by-ram.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:720304451502:android:ed7a5599939b35f207623f",
+        "android_client_info": {
+          "package_name": "com.smartwallet.smart_wallet"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "720304451502-cijh2okf6jge8kesemb9cq2i9ebcu1vk.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.smartwallet.smart_wallet",
+            "certificate_hash": "44ed943a5f9d6f0db895e84c16b053e138210fae"
+          }
+        },
+        {
+          "client_id": "720304451502-ih61sa67e59lt1040t1c3pl125lj3nj0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDBvUeiDmowRLaWYeaae9KOLYJJ9UsKlUw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "720304451502-ih61sa67e59lt1040t1c3pl125lj3nj0.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_name">Smart Wallet Quick Add</string>
+    <string name="widget_description">Quickly add transactions and view your net wallet balance from home screen.</string>
+</resources>
