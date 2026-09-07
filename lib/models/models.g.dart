@@ -56,10 +56,11 @@ class AccountAdapter extends TypeAdapter<Account> {
       notes: fields[6] as String? ?? '',
       isEnabledForCalc: fields[7] as bool? ?? true,
       imagePath: fields[8] as String?,
+      cardType: fields[9] as String? ?? 'Mastercard',
     );
   }
   @override void write(BinaryWriter writer, Account obj) {
-    writer.writeByte(9);
+    writer.writeByte(10);
     writer.writeByte(0); writer.write(obj.id);
     writer.writeByte(1); writer.write(obj.name);
     writer.writeByte(2); writer.write(obj.balance);
@@ -69,6 +70,7 @@ class AccountAdapter extends TypeAdapter<Account> {
     writer.writeByte(6); writer.write(obj.notes);
     writer.writeByte(7); writer.write(obj.isEnabledForCalc);
     writer.writeByte(8); writer.write(obj.imagePath);
+    writer.writeByte(9); writer.write(obj.cardType);
   }
 }
 
@@ -156,10 +158,12 @@ class PlannedPaymentAdapter extends TypeAdapter<PlannedPayment> {
       currentOccurrence: fields[12] as int? ?? 1,
       isCompleted: fields[13] as bool? ?? false,
       lastPaidDate: fields[14] as DateTime?,
+      isSplit: fields[15] as bool? ?? false,
+      splits: (fields[16] as List?)?.cast<SplitMember>(),
     );
   }
   @override void write(BinaryWriter writer, PlannedPayment obj) {
-    writer.writeByte(15);
+    writer.writeByte(17);
     writer.writeByte(0); writer.write(obj.id);
     writer.writeByte(1); writer.write(obj.name);
     writer.writeByte(2); writer.write(obj.amount);
@@ -175,6 +179,8 @@ class PlannedPaymentAdapter extends TypeAdapter<PlannedPayment> {
     writer.writeByte(12); writer.write(obj.currentOccurrence);
     writer.writeByte(13); writer.write(obj.isCompleted);
     writer.writeByte(14); writer.write(obj.lastPaidDate);
+    writer.writeByte(15); writer.write(obj.isSplit);
+    writer.writeByte(16); writer.write(obj.splits);
   }
 }
 
@@ -196,10 +202,12 @@ class DebtCreditAdapter extends TypeAdapter<DebtCredit> {
       status: fields[8] as String? ?? 'active',
       notes: fields[9] as String? ?? '',
       affectsAccount: fields[10] as bool? ?? true,
+      transactionId: fields[11] as String?,
+      settlementTransactionId: fields[12] as String?,
     );
   }
   @override void write(BinaryWriter writer, DebtCredit obj) {
-    writer.writeByte(11);
+    writer.writeByte(13);
     writer.writeByte(0); writer.write(obj.id);
     writer.writeByte(1); writer.write(obj.direction);
     writer.writeByte(2); writer.write(obj.personName);
@@ -211,6 +219,8 @@ class DebtCreditAdapter extends TypeAdapter<DebtCredit> {
     writer.writeByte(8); writer.write(obj.status);
     writer.writeByte(9); writer.write(obj.notes);
     writer.writeByte(10); writer.write(obj.affectsAccount);
+    writer.writeByte(11); writer.write(obj.transactionId);
+    writer.writeByte(12); writer.write(obj.settlementTransactionId);
   }
 }
 

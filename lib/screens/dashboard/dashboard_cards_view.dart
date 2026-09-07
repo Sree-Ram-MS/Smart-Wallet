@@ -8,6 +8,7 @@ import '../../core/utils/utils.dart';
 import '../../models/models.dart';
 import '../../providers/providers.dart';
 import '../../widgets/category_icon.dart';
+import '../../widgets/account_icon.dart';
 
 class DashboardCardsView extends ConsumerStatefulWidget {
   final String currency;
@@ -18,6 +19,8 @@ class DashboardCardsView extends ConsumerStatefulWidget {
 }
 
 class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
+  bool get _isDark => Theme.of(context).brightness == Brightness.dark;
+
   // Cash flow sub-filter (0: Cash flow, 1: Expenses, 2: Income)
   int _cashflowFilter = 0;
 
@@ -63,12 +66,12 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
         children: [
           Row(
             children: [
-              const Text(
+              Text(
                 'Analytics & Insights',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
-                  color: Colors.white,
+                  color: _isDark ? Colors.white : AppColors.lightText,
                 ),
               ),
               const SizedBox(width: 8),
@@ -77,7 +80,7 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
                 child: Icon(
                   Icons.swap_vert_rounded,
                   size: 18,
-                  color: Colors.white.withValues(alpha: 0.35),
+                  color: _isDark ? Colors.white.withValues(alpha: 0.35) : AppColors.lightTextMuted,
                 ),
               ),
             ],
@@ -100,7 +103,7 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
                 icon: Icon(
                   Icons.restart_alt_rounded,
                   size: 18,
-                  color: Colors.white.withValues(alpha: 0.6),
+                  color: _isDark ? Colors.white.withValues(alpha: 0.6) : AppColors.lightTextSecondary,
                 ),
                 tooltip: 'Reset card order',
                 visualDensity: VisualDensity.compact,
@@ -207,27 +210,21 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
             children: [
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                  color: _isDark ? Colors.white : AppColors.lightText,
                 ),
               ),
               if (subtitle != null) ...[
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
-                  style: const TextStyle(fontSize: 12, color: AppColors.darkTextSecondary),
+                  style: TextStyle(fontSize: 12, color: _isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
                 ),
               ],
             ],
           ),
-        ),
-        const SizedBox(width: 8),
-        Icon(
-          Icons.share_outlined,
-          size: 18,
-          color: Colors.white.withValues(alpha: 0.6),
         ),
         const SizedBox(width: 8),
         ReorderableDragStartListener(
@@ -237,14 +234,14 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
             child: Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
+                color: _isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                border: Border.all(color: _isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightBorder),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.drag_indicator_rounded,
                 size: 18,
-                color: Colors.white70,
+                color: _isDark ? Colors.white70 : AppColors.lightTextSecondary,
               ),
             ),
           ),
@@ -286,9 +283,9 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E24),
+        color: _isDark ? AppColors.darkCard : AppColors.lightCard,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: _isDark ? AppColors.darkBorder : AppColors.lightBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -299,22 +296,22 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
             index: index,
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'LAST 30 DAYS',
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: AppColors.darkTextSecondary,
+              color: _isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
               letterSpacing: 0.8,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             '$symbol${currentTotal.toStringAsFixed(2)}',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 26,
               fontWeight: FontWeight.w800,
-              color: Colors.white,
+              color: _isDark ? Colors.white : AppColors.lightText,
             ),
           ),
           const SizedBox(height: 14),
@@ -323,9 +320,9 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
           Container(
             padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
-              color: const Color(0xFF282830),
+              color: _isDark ? AppColors.darkCardAlt : AppColors.lightBg,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: _isDark ? Colors.white10 : AppColors.lightBorder),
             ),
             child: Row(
               children: [
@@ -353,7 +350,7 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
                     show: true,
                     drawVerticalLine: false,
                     getDrawingHorizontalLine: (v) => FlLine(
-                      color: Colors.white.withValues(alpha: 0.06),
+                      color: _isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
                       strokeWidth: 1,
                       dashArray: [4, 4],
                     ),
@@ -364,9 +361,9 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
                         showTitles: true,
                         reservedSize: 36,
                         getTitlesWidget: (v, m) {
-                          if (v == 0) return const Text('0', style: TextStyle(color: Colors.white38, fontSize: 9));
-                          if (v > 0) return Text('${v ~/ 1000}k', style: const TextStyle(color: Colors.white38, fontSize: 9));
-                          return Text('${v ~/ 1000}k', style: const TextStyle(color: Colors.white38, fontSize: 9));
+                          if (v == 0) return Text('0', style: TextStyle(color: _isDark ? Colors.white38 : AppColors.lightTextMuted, fontSize: 9));
+                          if (v > 0) return Text('${v ~/ 1000}k', style: TextStyle(color: _isDark ? Colors.white38 : AppColors.lightTextMuted, fontSize: 9));
+                          return Text('${v ~/ 1000}k', style: TextStyle(color: _isDark ? Colors.white38 : AppColors.lightTextMuted, fontSize: 9));
                         },
                       ),
                     ),
@@ -378,9 +375,9 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
                         reservedSize: 20,
                         getTitlesWidget: (v, m) {
                           final idx = v.toInt();
-                          if (idx == 0) return const Text('30d ago', style: TextStyle(color: Colors.white38, fontSize: 9));
-                          if (idx == 3) return const Text('15d ago', style: TextStyle(color: Colors.white38, fontSize: 9));
-                          if (idx == 6) return const Text('Today', style: TextStyle(color: Colors.white38, fontSize: 9));
+                          if (idx == 0) return Text('30d ago', style: TextStyle(color: _isDark ? Colors.white38 : AppColors.lightTextMuted, fontSize: 9));
+                          if (idx == 3) return Text('15d ago', style: TextStyle(color: _isDark ? Colors.white38 : AppColors.lightTextMuted, fontSize: 9));
+                          if (idx == 6) return Text('Today', style: TextStyle(color: _isDark ? Colors.white38 : AppColors.lightTextMuted, fontSize: 9));
                           return const SizedBox();
                         },
                       ),
@@ -443,16 +440,15 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
 
   Widget _buildCashFlowCard(int index) {
     final analytics = ref.watch(dashboardAnalyticsProvider);
-    final symbol = CurrencyUtil.symbol(widget.currency);
     final netCashFlow = analytics.netCashFlow;
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E24),
+        color: _isDark ? AppColors.darkCard : AppColors.lightCard,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: _isDark ? AppColors.darkBorder : AppColors.lightBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -469,18 +465,24 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('LAST 30 DAYS', style: TextStyle(fontSize: 10, color: AppColors.darkTextSecondary)),
+                  Text('LAST 30 DAYS', style: TextStyle(fontSize: 10, color: _isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)),
                   const SizedBox(height: 2),
                   Text(
-                    '$symbol${netCashFlow.toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+                    CurrencyUtil.format(netCashFlow, widget.currency),
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: netCashFlow < 0
+                          ? AppColors.expense
+                          : (_isDark ? Colors.white : AppColors.lightText),
+                    ),
                   ),
                 ],
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  const Text('vs past period', style: TextStyle(fontSize: 10, color: AppColors.darkTextSecondary)),
+                  Text('vs past period', style: TextStyle(fontSize: 10, color: _isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)),
                   const SizedBox(height: 2),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -532,9 +534,9 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E24),
+        color: _isDark ? AppColors.darkCard : AppColors.lightCard,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: _isDark ? AppColors.darkBorder : AppColors.lightBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -545,22 +547,22 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
             index: index,
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'LAST 30 DAYS',
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: AppColors.darkTextSecondary,
+              color: _isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
               letterSpacing: 0.8,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             '$symbol${totalSpending.toStringAsFixed(2)}',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 26,
               fontWeight: FontWeight.w800,
-              color: Colors.white,
+              color: _isDark ? Colors.white : AppColors.lightText,
             ),
           ),
           const SizedBox(height: 14),
@@ -569,9 +571,9 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
           Container(
             padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
-              color: const Color(0xFF282830),
+              color: _isDark ? AppColors.darkCardAlt : AppColors.lightBg,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: _isDark ? Colors.white10 : AppColors.lightBorder),
             ),
             child: Row(
               children: [
@@ -602,10 +604,10 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
                         showTitles: true,
                         getTitlesWidget: (v, m) {
                           final idx = v.toInt();
-                          if (idx == 0) return const Text('30d ago', style: TextStyle(color: Colors.white38, fontSize: 9));
-                          if (idx == 10) return const Text('20d ago', style: TextStyle(color: Colors.white38, fontSize: 9));
-                          if (idx == 20) return const Text('10d ago', style: TextStyle(color: Colors.white38, fontSize: 9));
-                          if (idx == 29) return const Text('Today', style: TextStyle(color: Colors.white38, fontSize: 9));
+                          if (idx == 0) return Text('30d ago', style: TextStyle(color: _isDark ? Colors.white38 : AppColors.lightTextMuted, fontSize: 9));
+                          if (idx == 10) return Text('20d ago', style: TextStyle(color: _isDark ? Colors.white38 : AppColors.lightTextMuted, fontSize: 9));
+                          if (idx == 20) return Text('10d ago', style: TextStyle(color: _isDark ? Colors.white38 : AppColors.lightTextMuted, fontSize: 9));
+                          if (idx == 29) return Text('Today', style: TextStyle(color: _isDark ? Colors.white38 : AppColors.lightTextMuted, fontSize: 9));
                           return const SizedBox();
                         },
                       ),
@@ -625,7 +627,7 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
                               ? (i % 3 == 0
                                   ? const Color(0xFFFF5252)
                                   : (i % 3 == 1 ? const Color(0xFF76FF03) : const Color(0xFFFF9100)))
-                              : const Color(0xFF2E2E38),
+                              : (_isDark ? const Color(0xFF2E2E38) : AppColors.lightBg),
                           width: 7,
                           borderRadius: BorderRadius.circular(2),
                         ),
@@ -652,22 +654,22 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
           const SizedBox(height: 24),
 
           // TOP CATEGORIES with horizontal progress bars
-          const Text(
+          Text(
             'TOP CATEGORIES',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.bold,
-              color: AppColors.darkTextSecondary,
+              color: _isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
               letterSpacing: 0.8,
             ),
           ),
           const SizedBox(height: 14),
 
           if (sortedCats.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
               child: Center(
-                child: Text('No category expenses recorded yet', style: TextStyle(color: Colors.white60)),
+                child: Text('No category expenses recorded yet', style: TextStyle(color: _isDark ? Colors.white60 : AppColors.lightTextMuted)),
               ),
             )
           else
@@ -688,11 +690,11 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
                       children: [
                         Text(
                           cat?.name ?? 'Other',
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white),
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: _isDark ? Colors.white : AppColors.lightText),
                         ),
                         Text(
                           '$symbol${catItem.value.toStringAsFixed(2)}',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _isDark ? Colors.white : AppColors.lightText),
                         ),
                       ],
                     ),
@@ -702,7 +704,7 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
                         Container(
                           height: 12,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF2E2E38),
+                            color: _isDark ? const Color(0xFF2E2E38) : AppColors.lightBg,
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
@@ -744,9 +746,9 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E24),
+        color: _isDark ? AppColors.darkCard : AppColors.lightCard,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: _isDark ? AppColors.darkBorder : AppColors.lightBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -763,18 +765,18 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('LAST 30 DAYS', style: TextStyle(fontSize: 10, color: AppColors.darkTextSecondary)),
+                  Text('LAST 30 DAYS', style: TextStyle(fontSize: 10, color: _isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)),
                   const SizedBox(height: 2),
                   Text(
                     '$symbol${totalBook.toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: _isDark ? Colors.white : AppColors.lightText),
                   ),
                 ],
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  const Text('vs past period', style: TextStyle(fontSize: 10, color: AppColors.darkTextSecondary)),
+                  Text('vs past period', style: TextStyle(fontSize: 10, color: _isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)),
                   const SizedBox(height: 2),
                   Text(
                     '-100%',
@@ -789,17 +791,17 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
             ],
           ),
           const SizedBox(height: 18),
-          const Divider(color: Colors.white12),
+          Divider(color: _isDark ? AppColors.darkBorder : AppColors.lightBorder),
           const SizedBox(height: 12),
 
           // Section 1: Income
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Income', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+              Text('Income', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _isDark ? Colors.white : AppColors.lightText)),
               Text(
                 '${totalIncome.toStringAsFixed(2)}   0%',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _isDark ? Colors.white : AppColors.lightText),
               ),
             ],
           ),
@@ -826,17 +828,17 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
             }),
 
           const SizedBox(height: 16),
-          const Divider(color: Colors.white12),
+          Divider(color: _isDark ? AppColors.darkBorder : AppColors.lightBorder),
           const SizedBox(height: 12),
 
           // Section 2: Expenses
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Expenses', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+              Text('Expenses', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _isDark ? Colors.white : AppColors.lightText)),
               Text(
                 '${totalExpense.toStringAsFixed(2)}   0%',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _isDark ? Colors.white : AppColors.lightText),
               ),
             ],
           ),
@@ -882,14 +884,14 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
           Expanded(
             child: Text(
               name,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: _isDark ? Colors.white : AppColors.lightText),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ),
           Text(
             amount > 0 ? amount.toStringAsFixed(2) : '0',
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _isDark ? Colors.white : AppColors.lightText),
           ),
           const SizedBox(width: 14),
           SizedBox(
@@ -910,51 +912,168 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
   Widget _buildNetBalanceCard(int index) {
     final netWallet = ref.watch(netWalletProvider);
     final accounts = ref.watch(accountsProvider);
-    final symbol = CurrencyUtil.symbol(widget.currency);
+    final enabledCount = accounts.where((a) => a.isEnabledForCalc).length;
+    final totalCount = accounts.length;
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E24),
+        color: _isDark ? AppColors.darkCard : AppColors.lightCard,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: _isDark ? AppColors.darkBorder : AppColors.lightBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildCardHeader(
             title: 'Total Net Balance',
-            subtitle: 'Sum of all active enabled accounts in wallet',
+            subtitle: 'Sum of accounts included in wallet balance',
             index: index,
           ),
-          const SizedBox(height: 16),
-          Text(
-            '$symbol${netWallet.toStringAsFixed(2)}',
-            style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: Colors.white),
-          ),
-          const SizedBox(height: 16),
-          const Divider(color: Colors.white12),
-          const SizedBox(height: 10),
-          ...accounts.map((a) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  children: [
-                    Text(a.emoji, style: const TextStyle(fontSize: 18)),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        a.name,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    Text(
-                      CurrencyUtil.format(a.balance, a.currency),
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                    ),
-                  ],
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                CurrencyUtil.format(netWallet, widget.currency),
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w800,
+                  color: netWallet < 0 ? AppColors.expense : (_isDark ? Colors.white : AppColors.lightText),
                 ),
-              )),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
+                ),
+                child: Text(
+                  '$enabledCount/$totalCount Included',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Divider(color: _isDark ? AppColors.darkBorder : AppColors.lightBorder),
+          const SizedBox(height: 8),
+          if (accounts.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Center(
+                child: Text(
+                  'No accounts added yet',
+                  style: TextStyle(color: _isDark ? Colors.white38 : AppColors.lightTextMuted, fontSize: 13),
+                ),
+              ),
+            )
+          else
+            ...accounts.map((a) {
+              final isIncluded = a.isEnabledForCalc;
+              return InkWell(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  ref.read(accountsProvider.notifier).toggleEnable(a);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        isIncluded
+                            ? '${a.name} excluded from Total Net Balance'
+                            : '${a.name} included in Total Net Balance',
+                      ),
+                      duration: const Duration(seconds: 2),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(10),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                  child: Row(
+                    children: [
+                      Opacity(
+                        opacity: isIncluded ? 1.0 : 0.45,
+                        child: AccountIcon(account: a, size: 18),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                a.name,
+                                style: TextStyle(
+                                  color: isIncluded
+                                      ? (_isDark ? Colors.white : AppColors.lightText)
+                                      : (_isDark ? Colors.white38 : AppColors.lightTextMuted),
+                                  fontWeight: isIncluded ? FontWeight.w600 : FontWeight.normal,
+                                  decoration: isIncluded ? null : TextDecoration.lineThrough,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (!isIncluded) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: AppColors.expense.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  'Excluded',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.expense,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      Text(
+                        CurrencyUtil.format(a.balance, a.currency),
+                        style: TextStyle(
+                          color: isIncluded
+                              ? (_isDark ? Colors.white : AppColors.lightText)
+                              : (_isDark ? Colors.white38 : AppColors.lightTextMuted),
+                          fontWeight: isIncluded ? FontWeight.bold : FontWeight.normal,
+                          decoration: isIncluded ? null : TextDecoration.lineThrough,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        isIncluded ? Icons.check_circle_rounded : Icons.remove_circle_outline_rounded,
+                        size: 16,
+                        color: isIncluded ? AppColors.income : (_isDark ? Colors.white24 : Colors.grey.shade400),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          if (accounts.any((a) => !a.isEnabledForCalc)) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Tap an account to toggle include/exclude. Excluded accounts do not contribute to Total Net Balance.',
+              style: TextStyle(
+                fontSize: 10,
+                fontStyle: FontStyle.italic,
+                color: _isDark ? Colors.white38 : AppColors.lightTextMuted,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -991,7 +1110,7 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.white60,
+              color: isSelected ? Colors.white : (_isDark ? Colors.white60 : AppColors.lightTextSecondary),
               fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
               fontSize: 12,
             ),
@@ -1009,6 +1128,7 @@ class _ChartLegendPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1018,7 +1138,7 @@ class _ChartLegendPill extends StatelessWidget {
           decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
         ),
         const SizedBox(width: 5),
-        Text(label, style: const TextStyle(fontSize: 10, color: Colors.white70, fontWeight: FontWeight.w500)),
+        Text(label, style: TextStyle(fontSize: 10, color: isDark ? Colors.white70 : AppColors.lightTextSecondary, fontWeight: FontWeight.w500)),
       ],
     );
   }

@@ -85,6 +85,7 @@ class BackupService {
                 'notes': a.notes,
                 'isEnabledForCalc': a.isEnabledForCalc,
                 'imagePath': a.imagePath,
+                'cardType': a.cardType,
               })
           .toList(),
       'categories': categories
@@ -138,6 +139,17 @@ class BackupService {
                 'currentOccurrence': p.currentOccurrence,
                 'isCompleted': p.isCompleted,
                 'lastPaidDate': p.lastPaidDate?.toIso8601String(),
+                'isSplit': p.isSplit,
+                'splits': p.splits
+                    ?.map((s) => {
+                          'id': s.id,
+                          'name': s.name,
+                          'amount': s.amount,
+                          'isPaid': s.isPaid,
+                          'paidDate': s.paidDate?.toIso8601String(),
+                          'paidAccountId': s.paidAccountId,
+                        })
+                    .toList(),
               })
           .toList(),
       'debtCredits': debts
@@ -153,6 +165,8 @@ class BackupService {
                 'status': d.status,
                 'notes': d.notes,
                 'affectsAccount': d.affectsAccount,
+                'transactionId': d.transactionId,
+                'settlementTransactionId': d.settlementTransactionId,
               })
           .toList(),
       'templates': templates
@@ -170,37 +184,43 @@ class BackupService {
     };
   }
 
-  /// Exports database to a `.smartwallet` file with optional encryption
-  static Future<File> createBackupFile({String? password}) async {
+  /// Exports database to a `.smartwallet` or `.json` file with optional encryption
+  static Future<File> createBackupFile({String? password, String format = 'smartwallet'}) async {
     final snapshot = createDatabaseSnapshot();
     final jsonString = jsonEncode(snapshot);
     final checksum = sha256.convert(utf8.encode(jsonString)).toString();
 
+    final isJson = format.toLowerCase() == 'json';
     String fileContent;
+
     if (password != null && password.trim().isNotEmpty) {
       // Encrypt with password
       final encryptedData = _encryptPayload(jsonString, password.trim());
-      fileContent = jsonEncode({
+      final map = {
         'format': _magicHeaderEncrypted,
         'version': _currentVersion,
         'createdAt': DateTime.now().toIso8601String(),
         'checksum': checksum,
         ...encryptedData,
-      });
+      };
+      fileContent = isJson ? const JsonEncoder.withIndent('  ').convert(map) : jsonEncode(map);
     } else {
       // Plain backup container
-      fileContent = jsonEncode({
+      final map = {
         'format': _magicHeaderPlain,
         'version': _currentVersion,
         'createdAt': DateTime.now().toIso8601String(),
         'checksum': checksum,
         'data': snapshot,
-      });
+        ...snapshot,
+      };
+      fileContent = isJson ? const JsonEncoder.withIndent('  ').convert(map) : jsonEncode(map);
     }
 
     final dir = await getApplicationDocumentsDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final fileName = 'smart_wallet_backup_$timestamp.smartwallet';
+    final ext = isJson ? 'json' : 'smartwallet';
+    final fileName = 'smart_wallet_backup_$timestamp.$ext';
     final file = File('${dir.path}/$fileName');
     await file.writeAsString(fileContent);
 
@@ -213,12 +233,12 @@ class BackupService {
   }
 
   /// 1-Tap Google Drive & Cloud Share
-  static Future<void> shareBackup({String? password}) async {
-    final file = await createBackupFile(password: password);
+  static Future<void> shareBackup({String? password, String format = 'smartwallet'}) async {
+    final file = await createBackupFile(password: password, format: format);
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile(file.path)],
-        subject: 'Smart Wallet Encrypted Backup',
+        subject: format.toLowerCase() == 'json' ? 'Smart Wallet JSON Backup' : 'Smart Wallet Encrypted Backup',
         text: 'Smart Wallet Backup • ${DateTime.now().toString().split('.').first}',
       ),
     );
@@ -329,6 +349,7 @@ class BackupService {
         notes: a['notes'] ?? '',
         isEnabledForCalc: a['isEnabledForCalc'] ?? true,
         imagePath: a['imagePath'],
+        cardType: a['cardType'] as String? ?? 'Mastercard',
       );
       if (!replaceAll) {
         final exists = HiveService.accountsBox.values.any((x) => x.id == acc.id);
@@ -400,6 +421,18 @@ class BackupService {
     final plannedList = data['plannedPayments'] as List? ?? [];
     for (final raw in plannedList) {
       final p = raw as Map<String, dynamic>;
+      final splitsRaw = p['splits'] as List?;
+      final splits = splitsRaw
+          ?.map((s) => SplitMember(
+                id: s['id'] ?? '',
+                name: s['name'] ?? '',
+                amount: (s['amount'] as num?)?.toDouble() ?? 0.0,
+                isPaid: s['isPaid'] ?? false,
+                paidDate: s['paidDate'] != null ? DateTime.tryParse(s['paidDate']) : null,
+                paidAccountId: s['paidAccountId'],
+              ))
+          .toList();
+
       final pl = PlannedPayment(
         id: p['id'] ?? '',
         name: p['name'] ?? '',
@@ -416,6 +449,8 @@ class BackupService {
         currentOccurrence: p['currentOccurrence'] ?? 1,
         isCompleted: p['isCompleted'] ?? false,
         lastPaidDate: p['lastPaidDate'] != null ? DateTime.tryParse(p['lastPaidDate']) : null,
+        isSplit: p['isSplit'] ?? false,
+        splits: splits,
       );
       if (!replaceAll) {
         final exists = HiveService.plannedBox.values.any((x) => x.id == pl.id);
@@ -441,6 +476,8 @@ class BackupService {
         status: d['status'] ?? 'active',
         notes: d['notes'] ?? '',
         affectsAccount: d['affectsAccount'] ?? true,
+        transactionId: d['transactionId'],
+        settlementTransactionId: d['settlementTransactionId'],
       );
       if (!replaceAll) {
         final exists = HiveService.debtCreditBox.values.any((x) => x.id == dc.id);

@@ -7,6 +7,7 @@ import '../../models/models.dart';
 import '../../providers/providers.dart';
 import '../../core/utils/utils.dart';
 import 'category_icon.dart';
+import 'account_icon.dart';
 
 const _uuid = Uuid();
 
@@ -75,31 +76,6 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
     if (widget.initialType != null) {
       _type = widget.initialType!;
     }
-    if (widget.initialSplit) {
-      _isSplit = true;
-      _type = 'expense';
-      _splitEntries.add(_SplitMemberEntry(
-        id: _uuid.v4(),
-        name: 'Friend 1',
-        amount: 0,
-      ));
-    }
-
-    final catId = widget.existing?.categoryId ?? widget.prefill?.categoryId;
-    if (catId != null) {
-      final allCats = widget.ref.read(categoriesProvider);
-      final matched = allCats.firstWhereOrNull((c) => c.id == catId);
-      if (matched != null) {
-        if (matched.parentId != null && matched.parentId!.isNotEmpty) {
-          _selectedParentCategoryId = matched.parentId;
-          _selectedSubcategoryId = matched.id;
-        } else {
-          _selectedParentCategoryId = matched.id;
-          _selectedSubcategoryId = null;
-        }
-      }
-    }
-
     if (widget.existing != null) {
       final e = widget.existing!;
       _type = e.type;
@@ -134,6 +110,31 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
     if (_selectedAccountId == null) {
       final accounts = widget.ref.read(accountsProvider);
       if (accounts.isNotEmpty) _selectedAccountId = accounts.first.id;
+    }
+
+    if (widget.initialSplit) {
+      _isSplit = true;
+      _type = 'expense';
+      _splitEntries.add(_SplitMemberEntry(
+        id: _uuid.v4(),
+        name: 'Friend 1',
+        amount: 0,
+      ));
+    }
+
+    final catId = widget.existing?.categoryId ?? widget.prefill?.categoryId;
+    if (catId != null) {
+      final allCats = widget.ref.read(categoriesProvider);
+      final matched = allCats.firstWhereOrNull((c) => c.id == catId);
+      if (matched != null && (matched.type == _type || _type == 'transfer')) {
+        if (matched.parentId != null && matched.parentId!.isNotEmpty) {
+          _selectedParentCategoryId = matched.parentId;
+          _selectedSubcategoryId = matched.id;
+        } else {
+          _selectedParentCategoryId = matched.id;
+          _selectedSubcategoryId = null;
+        }
+      }
     }
   }
 
@@ -179,6 +180,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
   }
 
   Widget _buildTypeTab(String type, String label, Color activeColor) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isSelected = _type == type;
     return Expanded(
       child: GestureDetector(
@@ -215,7 +217,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
           child: Text(
             label,
             style: TextStyle(
-              color: isSelected ? Colors.white : AppColors.darkTextSecondary,
+              color: isSelected ? Colors.white : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
               fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
               fontSize: 14,
             ),
@@ -486,9 +488,16 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
     final parentCategories = categories
         .where((c) => (c.type == _type || _type == 'transfer') && (c.parentId == null || c.parentId!.isEmpty))
         .toList();
+    if (_selectedParentCategoryId != null && !parentCategories.any((c) => c.id == _selectedParentCategoryId)) {
+      _selectedParentCategoryId = null;
+      _selectedSubcategoryId = null;
+    }
     final subcategories = _selectedParentCategoryId != null
         ? categories.where((c) => c.parentId == _selectedParentCategoryId).toList()
         : <Category>[];
+    if (_selectedSubcategoryId != null && !subcategories.any((c) => c.id == _selectedSubcategoryId)) {
+      _selectedSubcategoryId = null;
+    }
 
     final totalBill = double.tryParse(_amountCtrl.text) ?? 0;
     double friendsTotal = 0;
@@ -506,16 +515,6 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 8),
-            // Drag handle
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.darkBorder,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
               child: Row(
@@ -550,9 +549,9 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                 height: 44,
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: AppColors.darkCardAlt,
+                  color: Theme.of(context).brightness == Brightness.dark ? AppColors.darkCardAlt : AppColors.lightBg,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.darkBorder),
+                  border: Border.all(color: Theme.of(context).brightness == Brightness.dark ? AppColors.darkBorder : AppColors.lightBorder),
                 ),
                 child: Row(
                   children: [
@@ -601,7 +600,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                                 value: a.id,
                                 child: Row(
                                   children: [
-                                    Text(a.emoji),
+                                    AccountIcon(account: a, size: 18),
                                     const SizedBox(width: 8),
                                     Text(a.name),
                                   ],
@@ -623,7 +622,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                                   value: a.id,
                                   child: Row(
                                     children: [
-                                      Text(a.emoji),
+                                      AccountIcon(account: a, size: 18),
                                       const SizedBox(width: 8),
                                       Text(a.name),
                                     ],
@@ -734,10 +733,14 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                       Container(
                         margin: const EdgeInsets.only(bottom: 12),
                         decoration: BoxDecoration(
-                          color: _isSplit ? AppColors.primary.withValues(alpha: 0.08) : AppColors.darkCardAlt,
+                          color: _isSplit
+                              ? AppColors.primary.withValues(alpha: 0.08)
+                              : (Theme.of(context).brightness == Brightness.dark ? AppColors.darkCardAlt : AppColors.lightBg),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: _isSplit ? AppColors.primary.withValues(alpha: 0.4) : AppColors.darkBorder,
+                            color: _isSplit
+                                ? AppColors.primary.withValues(alpha: 0.4)
+                                : (Theme.of(context).brightness == Brightness.dark ? AppColors.darkBorder : AppColors.lightBorder),
                           ),
                         ),
                         child: Column(
@@ -754,7 +757,12 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                                 _isSplit
                                     ? 'Splitting bill with ${_splitEntries.length} friends'
                                     : 'Split restaurant, trip, or group bills',
-                                style: const TextStyle(fontSize: 12, color: AppColors.darkTextSecondary),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context).brightness == Brightness.dark
+                                      ? AppColors.darkTextSecondary
+                                      : AppColors.lightTextSecondary,
+                                ),
                               ),
                               value: _isSplit,
                               activeTrackColor: AppColors.primary,
@@ -992,14 +1000,17 @@ class _DropdownField<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hasMatch = items.any((item) => item.value == value);
+    final effectiveValue = hasMatch ? value : null;
     return DropdownButtonFormField<T>(
-      key: ValueKey(value),
-      initialValue: value,
+      key: ValueKey(effectiveValue),
+      initialValue: effectiveValue,
       items: items,
       onChanged: onChanged,
       decoration: InputDecoration(labelText: label),
       isExpanded: true,
-      dropdownColor: AppColors.darkCard,
+      dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
     );
   }
 }

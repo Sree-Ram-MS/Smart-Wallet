@@ -11,7 +11,9 @@ import '../../widgets/app_drawer.dart';
 import '../../widgets/add_transaction_sheet.dart';
 import '../../widgets/add_account_sheet.dart';
 import '../../widgets/category_icon.dart';
+import '../../widgets/account_icon.dart';
 import '../../widgets/user_avatar.dart';
+import '../../widgets/card_network_badge.dart';
 import 'dashboard_cards_view.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -551,14 +553,6 @@ class _CreditCardItem extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(color: AppColors.darkBorder, borderRadius: BorderRadius.circular(2)),
-                ),
-              ),
-              const SizedBox(height: 14),
               ListTile(
                 leading: Container(
                   width: 44,
@@ -567,10 +561,16 @@ class _CreditCardItem extends StatelessWidget {
                     color: color.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Center(child: Text(account.emoji, style: const TextStyle(fontSize: 22))),
+                  child: Center(child: AccountIcon(account: account, size: 24)),
                 ),
                 title: Text(account.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                subtitle: Text('Balance: ${CurrencyUtil.format(account.balance, account.currency)}'),
+                subtitle: Text(
+                  'Balance: ${CurrencyUtil.format(account.balance, account.currency)}',
+                  style: TextStyle(
+                    color: account.balance < 0 ? AppColors.expense : null,
+                    fontWeight: account.balance < 0 ? FontWeight.w700 : null,
+                  ),
+                ),
                 trailing: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
@@ -667,23 +667,22 @@ class _CreditCardItem extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(color: AppColors.darkBorder, borderRadius: BorderRadius.circular(2)),
-                  ),
-                ),
-                const SizedBox(height: 16),
                 Row(
                   children: [
-                    Text(account.emoji, style: const TextStyle(fontSize: 24)),
+                    AccountIcon(account: account, size: 24),
                     const SizedBox(width: 10),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('Update Balance: ${account.name}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        Text('Current: ${CurrencyUtil.format(account.balance, account.currency)}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        Text(
+                          'Current: ${CurrencyUtil.format(account.balance, account.currency)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: account.balance < 0 ? AppColors.expense : Colors.grey,
+                            fontWeight: account.balance < 0 ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -816,20 +815,44 @@ class _CreditCardItem extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  'Current Balance',
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.75),
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w500,
-                                    letterSpacing: 0.2,
-                                  ),
+                                Row(
+                                  children: [
+                                    Text(
+                                      'Current Balance',
+                                      style: TextStyle(
+                                        color: account.balance < 0 ? const Color(0xFFFF8080) : Colors.white.withValues(alpha: 0.75),
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w500,
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                    if (account.balance < 0) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.expense.withValues(alpha: 0.35),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(color: AppColors.expense.withValues(alpha: 0.6), width: 0.8),
+                                        ),
+                                        child: const Text(
+                                          'OVERDRAWN',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 7.5,
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 0.4,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
                                   CurrencyUtil.format(account.balance, account.currency),
-                                  style: const TextStyle(
-                                    color: Colors.white,
+                                  style: TextStyle(
+                                    color: account.balance < 0 ? const Color(0xFFFF8080) : Colors.white,
                                     fontWeight: FontWeight.w800,
                                     fontSize: 18,
                                     letterSpacing: -0.3,
@@ -840,48 +863,10 @@ class _CreditCardItem extends StatelessWidget {
                               ],
                             ),
                           ),
-                          // Mastercard Overlapping Circles Logo
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                width: 28,
-                                height: 16,
-                                child: Stack(
-                                  children: [
-                                    Container(
-                                      width: 16,
-                                      height: 16,
-                                      decoration: const BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: Color(0xFFEB001B), // Red circle
-                                      ),
-                                    ),
-                                    Positioned(
-                                      left: 10,
-                                      child: Container(
-                                        width: 16,
-                                        height: 16,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: const Color(0xFFF79E1B).withValues(alpha: 0.92), // Orange circle
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 1),
-                              const Text(
-                                'mastercard',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 6.5,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.2,
-                                ),
-                              ),
-                            ],
+                          // Card Network Badge (RuPay, Visa, Mastercard, Wallet, Other)
+                          CardNetworkBadge(
+                            cardType: account.cardType,
+                            onCard: true,
                           ),
                         ],
                       ),
@@ -1035,6 +1020,7 @@ class _DashboardSplitBillsSection extends StatelessWidget {
     }
 
     final activeSplits = splitTxns.where((t) => t.splits != null && t.splits!.any((s) => !s.isPaid)).toList();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1049,26 +1035,27 @@ class _DashboardSplitBillsSection extends StatelessWidget {
             child: InkWell(
               borderRadius: BorderRadius.circular(16),
               onTap: () => context.go('/split-bills'),
-              child: const Padding(
-                padding: EdgeInsets.all(16),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
                     CircleAvatar(
-                      backgroundColor: AppColors.darkCardAlt,
-                      child: Icon(Icons.call_split_rounded, color: AppColors.primary),
+                      backgroundColor: isDark ? AppColors.darkCardAlt : AppColors.lightBg,
+                      child: const Icon(Icons.call_split_rounded, color: AppColors.primary),
                     ),
-                    SizedBox(width: 12),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('No Active Split Bills', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                          SizedBox(height: 2),
-                          Text('Split restaurant or shared expenses with friends', style: TextStyle(color: AppColors.darkTextSecondary, fontSize: 12)),
+                          const Text('No Active Split Bills', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                          const SizedBox(height: 2),
+                          Text('Split restaurant or shared expenses with friends',
+                              style: TextStyle(color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary, fontSize: 12)),
                         ],
                       ),
                     ),
-                    Icon(Icons.chevron_right_rounded, color: AppColors.darkTextMuted),
+                    Icon(Icons.chevron_right_rounded, color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted),
                   ],
                 ),
               ),
@@ -1079,9 +1066,9 @@ class _DashboardSplitBillsSection extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: AppColors.darkCard,
+              color: isDark ? AppColors.darkCard : AppColors.lightCard,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.darkBorder),
+              border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
             ),
             child: Row(
               children: [
@@ -1100,7 +1087,7 @@ class _DashboardSplitBillsSection extends StatelessWidget {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Pending to Collect', style: TextStyle(fontSize: 10, color: AppColors.darkTextSecondary)),
+                          Text('Pending to Collect', style: TextStyle(fontSize: 10, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)),
                           Text(
                             '${CurrencyUtil.symbol(currency)}${totalPending.toStringAsFixed(0)}',
                             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.expense),
@@ -1110,7 +1097,7 @@ class _DashboardSplitBillsSection extends StatelessWidget {
                     ],
                   ),
                 ),
-                Container(width: 1, height: 28, color: AppColors.darkBorder),
+                Container(width: 1, height: 28, color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Row(
@@ -1127,7 +1114,7 @@ class _DashboardSplitBillsSection extends StatelessWidget {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Recovered', style: TextStyle(fontSize: 10, color: AppColors.darkTextSecondary)),
+                          Text('Recovered', style: TextStyle(fontSize: 10, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)),
                           Text(
                             '${CurrencyUtil.symbol(currency)}${totalRecovered.toStringAsFixed(0)}',
                             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.income),
@@ -1176,9 +1163,21 @@ class _DashboardSplitBillsSection extends StatelessWidget {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                Text(
-                                  '${DateUtil.formatDate(txn.date)} • ${acc != null ? '${acc.emoji} ${acc.name}' : ''}',
-                                  style: const TextStyle(fontSize: 11, color: AppColors.darkTextSecondary),
+                                Row(
+                                  children: [
+                                    Text(
+                                      '${DateUtil.formatDate(txn.date)} • ',
+                                      style: TextStyle(fontSize: 11, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                                    ),
+                                    if (acc != null) ...[
+                                      AccountIcon(account: acc, size: 12),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        acc.name,
+                                        style: TextStyle(fontSize: 11, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ],
                             ),
@@ -1207,7 +1206,7 @@ class _DashboardSplitBillsSection extends StatelessWidget {
                         borderRadius: BorderRadius.circular(3),
                         child: LinearProgressIndicator(
                           value: progress,
-                          backgroundColor: AppColors.darkCardAlt,
+                          backgroundColor: isDark ? AppColors.darkCardAlt : AppColors.lightBorder,
                           valueColor: AlwaysStoppedAnimation<Color>(
                             isFullySettled ? AppColors.income : AppColors.primary,
                           ),
@@ -1258,17 +1257,6 @@ class _TransactionTile extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.darkBorder,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
             Center(
               child: Column(
                 children: [

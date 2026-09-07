@@ -82,6 +82,7 @@ class Account extends HiveObject {
   @HiveField(6) String notes;
   @HiveField(7) bool isEnabledForCalc;
   @HiveField(8) String? imagePath;
+  @HiveField(9) String cardType;
 
   Account({
     required this.id,
@@ -93,6 +94,7 @@ class Account extends HiveObject {
     this.notes = '',
     this.isEnabledForCalc = true,
     this.imagePath,
+    this.cardType = 'Mastercard',
   });
 }
 
@@ -167,6 +169,8 @@ class PlannedPayment extends HiveObject {
   @HiveField(12) int currentOccurrence;
   @HiveField(13) bool isCompleted;
   @HiveField(14) DateTime? lastPaidDate;
+  @HiveField(15) bool isSplit;
+  @HiveField(16) List<SplitMember>? splits;
 
   PlannedPayment({
     required this.id,
@@ -184,6 +188,8 @@ class PlannedPayment extends HiveObject {
     this.currentOccurrence = 1,
     this.isCompleted = false,
     this.lastPaidDate,
+    this.isSplit = false,
+    this.splits,
   });
 }
 
@@ -202,6 +208,8 @@ class DebtCredit extends HiveObject {
   @HiveField(8) String status; // 'active' | 'closed'
   @HiveField(9) String notes;
   @HiveField(10) bool affectsAccount; // false = opening balance / historical record only
+  @HiveField(11) String? transactionId;
+  @HiveField(12) String? settlementTransactionId;
 
   DebtCredit({
     required this.id,
@@ -215,6 +223,8 @@ class DebtCredit extends HiveObject {
     this.status = 'active',
     this.notes = '',
     this.affectsAccount = true,
+    this.transactionId,
+    this.settlementTransactionId,
   });
 }
 

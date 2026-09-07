@@ -35,14 +35,16 @@ class CurrencyUtil {
   static String format(double amount, String currency) {
     final sym = symbol(currency);
     final formatted = NumberFormat('#,##0.##').format(amount.abs());
-    return '$sym$formatted';
-  }
-
-  static String formatSigned(double amount, String currency) {
-    final sym = symbol(currency);
-    final formatted = NumberFormat('#,##0.##').format(amount.abs());
     final sign = amount < 0 ? '-' : '';
     return '$sign$sym$formatted';
+  }
+
+  static String formatSigned(double amount, String currency, {bool showPositive = false}) {
+    final sym = symbol(currency);
+    final formatted = NumberFormat('#,##0.##').format(amount.abs());
+    if (amount < 0) return '-$sym$formatted';
+    if (showPositive && amount > 0) return '+$sym$formatted';
+    return '$sym$formatted';
   }
 
   static double convert(double amount, String fromCurrency, String toCurrency) {

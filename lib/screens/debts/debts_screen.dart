@@ -9,6 +9,7 @@ import '../../models/models.dart';
 import '../../providers/providers.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/category_icon.dart';
+import '../../widgets/account_icon.dart';
 
 /// Debts screen — "I Lent" (direction = 'lent')
 class DebtsScreen extends ConsumerWidget {
@@ -205,6 +206,8 @@ class _DebtList extends StatelessWidget {
         final overdue = d.dueDate != null && d.dueDate!.isBefore(DateTime.now()) && !isClosed;
         final color = d.direction == 'lent' ? AppColors.income : AppColors.expense;
 
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+
         return Card(
           margin: const EdgeInsets.only(bottom: 10),
           child: ListTile(
@@ -230,13 +233,17 @@ class _DebtList extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: AppColors.darkCardAlt,
+                      color: isDark ? AppColors.darkCardAlt : AppColors.lightBg,
                       borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: AppColors.darkBorder),
+                      border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
                     ),
-                    child: const Text(
+                    child: Text(
                       'No Balance Effect',
-                      style: TextStyle(fontSize: 9, color: AppColors.darkTextSecondary, fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ],
@@ -273,16 +280,29 @@ class _DebtList extends StatelessWidget {
                 ),
               ],
             ),
-            trailing: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  CurrencyUtil.format(d.amount, acc?.currency ?? 'INR'),
-                  style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 15),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      CurrencyUtil.format(d.amount, acc?.currency ?? 'INR'),
+                      style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 15),
+                    ),
+                    if (isClosed)
+                      const Text('Settled ✓', style: TextStyle(fontSize: 11, color: AppColors.income, fontWeight: FontWeight.bold)),
+                  ],
                 ),
-                if (isClosed)
-                  const Text('Settled ✓', style: TextStyle(fontSize: 11, color: AppColors.income, fontWeight: FontWeight.bold)),
+                if (isClosed) ...[
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: const Icon(Icons.undo_rounded, color: AppColors.accent, size: 22),
+                    tooltip: d.direction == 'lent' ? 'Undo Recovered' : 'Undo Repaid',
+                    onPressed: () => _confirmUndo(context, d),
+                  ),
+                ],
               ],
             ),
             isThreeLine: true,
@@ -290,6 +310,60 @@ class _DebtList extends StatelessWidget {
           ),
         ).animate().fadeIn(delay: Duration(milliseconds: i * 40), duration: 300.ms);
       },
+    );
+  }
+
+  void _confirmUndo(BuildContext context, DebtCredit d) {
+    final isLent = d.direction == 'lent';
+    final acc = accounts.firstWhereOrNull((a) => a.id == d.accountId);
+    final cur = acc?.currency ?? 'INR';
+    final formattedAmt = CurrencyUtil.format(d.amount, cur);
+
+    showDialog(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.undo_rounded, color: AppColors.accent),
+            const SizedBox(width: 8),
+            Text(isLent ? 'Undo Recovery' : 'Undo Repayment'),
+          ],
+        ),
+        content: Text(
+          'Revert this record for "${d.personName}" back to active?\n\n'
+          '• Status will return to Active.\n'
+          '${d.affectsAccount ? "• The ${isLent ? 'recovery (+$formattedAmt)' : 'repayment (-$formattedAmt)'} transaction record will be deleted and account balance restored." : "• No account balance was affected."}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dCtx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              Navigator.pop(dCtx);
+              await ref.read(debtCreditProvider.notifier).reopen(d);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    behavior: SnackBarBehavior.floating,
+                    content: Text(
+                      isLent
+                          ? 'Recovery undone! Debt moved back to Active.'
+                          : 'Repayment undone! Credit moved back to Active.',
+                    ),
+                  ),
+                );
+              }
+            },
+            child: const Text('Undo & Reopen', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -306,12 +380,6 @@ class _DebtList extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 8),
-                decoration: BoxDecoration(color: AppColors.darkBorder, borderRadius: BorderRadius.circular(2)),
-              ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                 child: Row(
@@ -338,8 +406,8 @@ class _DebtList extends StatelessWidget {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
+                          behavior: SnackBarBehavior.floating,
                           content: Text(isLent ? 'Marked as recovered!' : 'Marked as repaid!'),
-                          backgroundColor: AppColors.darkCard,
                         ),
                       );
                     }
@@ -364,6 +432,20 @@ class _DebtList extends StatelessWidget {
                         existing: d,
                       ),
                     );
+                  },
+                ),
+              ] else ...[
+                ListTile(
+                  leading: const Icon(Icons.undo_rounded, color: AppColors.accent),
+                  title: Text(isLent ? 'Undo Recovered' : 'Undo Repaid'),
+                  subtitle: Text(
+                    isLent
+                        ? 'Revert to active debt and remove recovery transaction'
+                        : 'Revert to active credit and remove repayment transaction',
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _confirmUndo(context, d);
                   },
                 ),
               ],
@@ -493,6 +575,7 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
         status: old.status,
         notes: _notesCtrl.text.trim(),
         affectsAccount: _affectsAccount,
+        transactionId: old.transactionId,
       );
       await widget.ref.read(debtCreditProvider.notifier).update(old, updated);
     } else {
@@ -517,13 +600,13 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
           content: Text(
             isLent
                 ? (_affectsAccount
-                    ? (widget.existing != null ? 'Debt updated & balance adjusted' : 'Debt added & account balance updated!')
+                    ? (widget.existing != null ? 'Debt updated & balance adjusted' : 'Debt added & transaction recorded!')
                     : 'Debt recorded (opening balance, no balance change)')
                 : (_affectsAccount
-                    ? (widget.existing != null ? 'Credit updated & balance adjusted' : 'Credit added & account balance updated!')
+                    ? (widget.existing != null ? 'Credit updated & balance adjusted' : 'Credit added & transaction recorded!')
                     : 'Credit recorded (opening balance, no balance change)'),
           ),
-          backgroundColor: AppColors.darkCard,
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }
@@ -548,12 +631,6 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(color: AppColors.darkBorder, borderRadius: BorderRadius.circular(2)),
-            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
               child: Row(
@@ -593,12 +670,22 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       initialValue: _accountId,
+                      isExpanded: true,
                       items: widget.accounts
-                          .map((a) => DropdownMenuItem(value: a.id, child: Text('${a.emoji} ${a.name}')))
+                          .map((a) => DropdownMenuItem(
+                                value: a.id,
+                                child: Row(
+                                  children: [
+                                    AccountIcon(account: a, size: 18),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: Text(a.name, overflow: TextOverflow.ellipsis)),
+                                  ],
+                                ),
+                              ))
                           .toList(),
                       onChanged: (v) => setState(() => _accountId = v),
                       decoration: const InputDecoration(labelText: 'Account'),
-                      dropdownColor: AppColors.darkCard,
+                      dropdownColor: Theme.of(context).brightness == Brightness.dark ? AppColors.darkCard : AppColors.lightCard,
                     ),
                     // Category & Subcategory Row
                     if (_selectedParentCategoryId != null && subcategories.isNotEmpty) ...[
@@ -609,16 +696,16 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
                             child: DropdownButtonFormField<String?>(
                               key: ValueKey('debt_parent_$_selectedParentCategoryId'),
                               initialValue: _selectedParentCategoryId,
+                              isExpanded: true,
                               items: [
-                                const DropdownMenuItem(value: null, child: Text('None')),
+                                const DropdownMenuItem(value: null, child: Text('None', overflow: TextOverflow.ellipsis)),
                                 ...parentCategories.map((c) => DropdownMenuItem(
                                       value: c.id,
                                       child: Row(
-                                        mainAxisSize: MainAxisSize.min,
                                         children: [
                                           CategoryIcon(category: c, size: 16),
                                           const SizedBox(width: 6),
-                                          Flexible(
+                                          Expanded(
                                             child: Text(c.name,
                                                 style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                                                 overflow: TextOverflow.ellipsis),
@@ -632,7 +719,7 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
                                 _selectedSubcategoryId = null;
                               }),
                               decoration: const InputDecoration(labelText: 'Category'),
-                              dropdownColor: AppColors.darkCard,
+                              dropdownColor: Theme.of(context).brightness == Brightness.dark ? AppColors.darkCard : AppColors.lightCard,
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -640,19 +727,28 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
                             child: DropdownButtonFormField<String?>(
                               key: ValueKey('debt_sub_$_selectedSubcategoryId'),
                               initialValue: _selectedSubcategoryId,
+                              isExpanded: true,
                               items: [
-                                const DropdownMenuItem(
+                                DropdownMenuItem(
                                   value: null,
-                                  child: Text('All / General', style: TextStyle(color: AppColors.darkTextSecondary, fontSize: 13)),
+                                  child: Text(
+                                    'All / General',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Theme.of(context).brightness == Brightness.dark
+                                          ? AppColors.darkTextSecondary
+                                          : AppColors.lightTextSecondary,
+                                      fontSize: 13,
+                                    ),
+                                  ),
                                 ),
                                 ...subcategories.map((sub) => DropdownMenuItem(
                                       value: sub.id,
                                       child: Row(
-                                        mainAxisSize: MainAxisSize.min,
                                         children: [
                                           CategoryIcon(category: sub, size: 16),
                                           const SizedBox(width: 6),
-                                          Flexible(
+                                          Expanded(
                                             child: Text(sub.name, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
                                           ),
                                         ],
@@ -661,7 +757,7 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
                               ],
                               onChanged: (v) => setState(() => _selectedSubcategoryId = v),
                               decoration: const InputDecoration(labelText: 'Subcategory'),
-                              dropdownColor: AppColors.darkCard,
+                              dropdownColor: Theme.of(context).brightness == Brightness.dark ? AppColors.darkCard : AppColors.lightCard,
                             ),
                           ),
                         ],
@@ -671,15 +767,16 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
                       DropdownButtonFormField<String?>(
                         key: ValueKey('debt_parent_$_selectedParentCategoryId'),
                         initialValue: _selectedParentCategoryId,
+                        isExpanded: true,
                         items: [
-                          const DropdownMenuItem(value: null, child: Text('No Category')),
+                          const DropdownMenuItem(value: null, child: Text('No Category', overflow: TextOverflow.ellipsis)),
                           ...parentCategories.map((c) => DropdownMenuItem(
                                 value: c.id,
                                 child: Row(
                                   children: [
                                     CategoryIcon(category: c, size: 18),
                                     const SizedBox(width: 8),
-                                    Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                    Expanded(child: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
                                   ],
                                 ),
                               )),
@@ -689,7 +786,7 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
                           _selectedSubcategoryId = null;
                         }),
                         decoration: const InputDecoration(labelText: 'Category (Optional)'),
-                        dropdownColor: AppColors.darkCard,
+                        dropdownColor: Theme.of(context).brightness == Brightness.dark ? AppColors.darkCard : AppColors.lightCard,
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -703,15 +800,8 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
                           lastDate: DateTime(2100),
                         );
                         if (d != null) {
-                          final now = DateTime.now();
-                          final today = DateTime(now.year, now.month, now.day);
-                          final isPast = d.isBefore(today);
                           setState(() {
                             _startDate = d;
-                            // Auto-adjust default toggle: false for past date (opening balance), true for today/future
-                            if (widget.existing == null) {
-                              _affectsAccount = !isPast;
-                            }
                           });
                         }
                       },
@@ -758,12 +848,12 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
                     // ─── Affect Account Balance Toggle ───
                     Container(
                       decoration: BoxDecoration(
-                        color: AppColors.darkCardAlt,
+                        color: Theme.of(context).brightness == Brightness.dark ? AppColors.darkCardAlt : AppColors.lightBg,
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: _affectsAccount
                               ? AppColors.primary.withValues(alpha: 0.4)
-                              : AppColors.darkBorder,
+                              : (Theme.of(context).brightness == Brightness.dark ? AppColors.darkBorder : AppColors.lightBorder),
                         ),
                       ),
                       child: SwitchListTile(
@@ -777,12 +867,14 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
                         subtitle: Text(
                           _affectsAccount
                               ? (isLent
-                                  ? 'Deducts ${CurrencyUtil.format(double.tryParse(_amountCtrl.text) ?? 0, selectedAcc?.currency ?? 'INR')} from ${selectedAcc?.name ?? 'account'}'
-                                  : 'Adds ${CurrencyUtil.format(double.tryParse(_amountCtrl.text) ?? 0, selectedAcc?.currency ?? 'INR')} to ${selectedAcc?.name ?? 'account'}')
-                              : 'Opening balance record — does NOT change account balance',
+                                  ? 'Deducts ${CurrencyUtil.format(double.tryParse(_amountCtrl.text) ?? 0, selectedAcc?.currency ?? 'INR')} from ${selectedAcc?.name ?? 'account'} & records transaction'
+                                  : 'Adds ${CurrencyUtil.format(double.tryParse(_amountCtrl.text) ?? 0, selectedAcc?.currency ?? 'INR')} to ${selectedAcc?.name ?? 'account'} & records transaction')
+                              : 'Opening balance record — does NOT change account balance or create transaction',
                           style: TextStyle(
                             fontSize: 11,
-                            color: _affectsAccount ? AppColors.primary : AppColors.darkTextSecondary,
+                            color: _affectsAccount
+                                ? AppColors.primary
+                                : (Theme.of(context).brightness == Brightness.dark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
                           ),
                         ),
                       ),

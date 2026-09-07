@@ -62,8 +62,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
+              behavior: SnackBarBehavior.floating,
               content: Text('Profile picture updated successfully!'),
-              backgroundColor: AppColors.darkCard,
             ),
           );
         }
@@ -88,8 +88,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
+            behavior: SnackBarBehavior.floating,
             content: Text('Profile picture removed.'),
-            backgroundColor: AppColors.darkCard,
           ),
         );
       }
@@ -111,15 +111,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: AppColors.darkBorder,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                 child: Align(
@@ -166,6 +157,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final user = ref.watch(userProvider);
     if (user == null) return const SizedBox();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return PopScope(
       canPop: false,
@@ -196,7 +188,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   gradient: LinearGradient(
                     colors: [
                       AppColors.primary.withValues(alpha: 0.25),
-                      const Color(0xFF1E1E28),
+                      isDark ? const Color(0xFF1E1E28) : AppColors.lightCard,
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -222,7 +214,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -231,13 +223,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                                  color: isDark ? Colors.white : AppColors.lightText,
                                 ),
                               ),
-                              SizedBox(height: 2),
+                              const SizedBox(height: 2),
                               Text(
                                 'Logged in as Guest User',
-                                style: TextStyle(fontSize: 12, color: AppColors.darkTextSecondary),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                ),
                               ),
                             ],
                           ),
@@ -245,9 +240,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    const Text(
+                    Text(
                       'Link your Google account to keep your identity and profile updated. All your existing accounts, categories, and transactions will remain completely safe and untouched.',
-                      style: TextStyle(fontSize: 12.5, color: Colors.white70, height: 1.35),
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: isDark ? Colors.white70 : AppColors.lightTextSecondary,
+                        height: 1.35,
+                      ),
                     ),
                     const SizedBox(height: 14),
                     SizedBox(
@@ -338,12 +337,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       onSubmitted: (v) async {
                         final updated = user.copyWith(name: v.trim());
                         await ref.read(userProvider.notifier).updateUser(updated);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              behavior: SnackBarBehavior.floating,
+                              content: Text('Display name saved!'),
+                            ),
+                          );
+                        }
                       },
-                    ),
-                    const SizedBox(height: 8),
-                    InputDecorator(
-                      decoration: const InputDecoration(labelText: 'Email'),
-                      child: Text(user.email, style: Theme.of(context).textTheme.bodyMedium),
                     ),
                   ],
                 ),
@@ -351,7 +353,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Preferences
+            // Preferences Card
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -374,7 +376,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         if (v != null) ref.read(userProvider.notifier).setBaseCurrency(v);
                       },
                       decoration: const InputDecoration(labelText: 'Base Currency'),
-                      dropdownColor: AppColors.darkCard,
+                      dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
                     ),
                     const SizedBox(height: 16),
 
@@ -387,7 +389,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       title: const Text('Dark Mode'),
                       secondary: const Icon(Icons.dark_mode_rounded),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      tileColor: AppColors.darkCardAlt,
+                      tileColor: isDark ? AppColors.darkCardAlt : AppColors.lightBg,
                     ),
                     const SizedBox(height: 8),
 
@@ -399,6 +401,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         await ref.read(userProvider.notifier).toggleBiometric();
                         messenger.showSnackBar(
                           SnackBar(
+                            behavior: SnackBarBehavior.floating,
                             content: Text(v
                                 ? 'Biometric App Lock enabled! You will be asked on next launch.'
                                 : 'Biometric App Lock disabled.'),
@@ -409,7 +412,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       subtitle: const Text('Face ID / Touch ID / Fingerprint / PIN'),
                       secondary: const Icon(Icons.fingerprint_rounded),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      tileColor: AppColors.darkCardAlt,
+                      tileColor: isDark ? AppColors.darkCardAlt : AppColors.lightBg,
                     ),
                   ],
                 ),
@@ -443,13 +446,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       subtitle: const Text('Reminds you to log daily income & expenses'),
                       secondary: const Icon(Icons.alarm_rounded),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      tileColor: AppColors.darkCardAlt,
+                      tileColor: isDark ? AppColors.darkCardAlt : AppColors.lightBg,
                     ),
                     if (user.dailyReminderEnabled) ...[
                       const SizedBox(height: 8),
                       ListTile(
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        tileColor: AppColors.darkCardAlt.withValues(alpha: 0.6),
+                        tileColor: isDark ? AppColors.darkCardAlt.withValues(alpha: 0.6) : AppColors.lightBg,
                         leading: const Icon(Icons.access_time_rounded, color: AppColors.primary),
                         title: const Text('Reminder Time', style: TextStyle(fontSize: 14)),
                         subtitle: Text(
@@ -457,7 +460,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               .format(context),
                           style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary),
                         ),
-                        trailing: const Text('Tap to change', style: TextStyle(fontSize: 12, color: AppColors.darkTextMuted)),
+                        trailing: Text('Tap to change', style: TextStyle(fontSize: 12, color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted)),
                         onTap: () async {
                           final picked = await showTimePicker(
                             context: context,
@@ -475,6 +478,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
+                                  behavior: SnackBarBehavior.floating,
                                   content: Text(
                                     'Daily reminder set to ${picked.format(context)}',
                                   ),
@@ -497,7 +501,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       subtitle: const Text('Reminds you before bills & EMIs are due'),
                       secondary: const Icon(Icons.event_note_rounded),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      tileColor: AppColors.darkCardAlt,
+                      tileColor: isDark ? AppColors.darkCardAlt : AppColors.lightBg,
                     ),
                     if (user.plannedReminderEnabled) ...[
                       const SizedBox(height: 8),
@@ -525,7 +529,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             labelText: 'Remind in Advance',
                             prefixIcon: Icon(Icons.timelapse_rounded),
                           ),
-                          dropdownColor: AppColors.darkCard,
+                          dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
                         ),
                       ),
                     ],
@@ -577,9 +581,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       '1-Tap Backup to Google Drive, export encrypted .smartwallet files, or import/export CSV transactions.',
-                      style: TextStyle(fontSize: 12, color: AppColors.darkTextSecondary, height: 1.3),
+                      style: TextStyle(fontSize: 12, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary, height: 1.3),
                     ),
                     const SizedBox(height: 14),
                     SizedBox(

@@ -1,10 +1,13 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 import '../models/models.dart';
 import '../services/auth_service.dart';
 import '../services/hive_service.dart';
 import '../services/notification_service.dart';
 import '../services/widget_service.dart';
+
+const _uuid = Uuid();
 
 void _syncHomeWidget() {
   final user = HiveService.getUser();
@@ -124,33 +127,47 @@ final userProvider = StateNotifierProvider<UserNotifier, UserProfile?>((ref) => 
 // ─── Accounts Provider ────────────────────────────────────────────────────────
 
 class AccountsNotifier extends StateNotifier<List<Account>> {
-  AccountsNotifier() : super(HiveService.getAccounts());
+  final Ref _ref;
+  AccountsNotifier(this._ref) : super(HiveService.getAccounts());
+
+  void _syncHomeWidget() {
+    final user = _ref.read(userProvider);
+    final net = HiveService.getNetWallet();
+    if (user != null) {
+      WidgetService.updateWidgetData(netBalance: net, currency: user.baseCurrency);
+    }
+  }
 
   Future<void> add(Account acc) async {
     await HiveService.addAccount(acc);
     state = HiveService.getAccounts();
+    _syncHomeWidget();
   }
 
   Future<void> update(Account acc) async {
     await HiveService.updateAccount(acc);
     state = HiveService.getAccounts();
+    _syncHomeWidget();
   }
 
   Future<void> updateBalance(Account acc, double newBalance) async {
     acc.balance = newBalance;
     await HiveService.updateAccount(acc);
     state = HiveService.getAccounts();
+    _syncHomeWidget();
   }
 
   Future<void> delete(Account acc) async {
     await HiveService.deleteAccount(acc);
     state = HiveService.getAccounts();
+    _syncHomeWidget();
   }
 
   Future<void> toggleEnable(Account acc) async {
     acc.isEnabledForCalc = !acc.isEnabledForCalc;
     await HiveService.updateAccount(acc);
     state = HiveService.getAccounts();
+    _syncHomeWidget();
   }
 
   void refresh() {
@@ -160,7 +177,7 @@ class AccountsNotifier extends StateNotifier<List<Account>> {
 }
 
 final accountsProvider = StateNotifierProvider<AccountsNotifier, List<Account>>(
-  (ref) => AccountsNotifier(),
+  (ref) => AccountsNotifier(ref),
 );
 
 // ─── Categories Provider ──────────────────────────────────────────────────────
@@ -302,6 +319,16 @@ class PlannedPaymentsNotifier extends StateNotifier<List<PlannedPayment>> {
   Future<void> markPaid(PlannedPayment p, {bool recordTransaction = true}) async {
     p.lastPaidDate = DateTime.now();
     if (recordTransaction) {
+      final splitList = p.isSplit && p.splits != null
+          ? p.splits!
+              .map((s) => SplitMember(
+                    id: _uuid.v4(),
+                    name: s.name,
+                    amount: s.amount,
+                    isPaid: false,
+                  ))
+              .toList()
+          : null;
       final txn = Transaction(
         id: '',
         type: 'expense',
@@ -310,6 +337,8 @@ class PlannedPaymentsNotifier extends StateNotifier<List<PlannedPayment>> {
         categoryId: p.categoryId,
         date: DateTime.now(),
         note: 'Planned Payment: ${p.name}',
+        isSplit: p.isSplit,
+        splits: splitList,
       );
       await _ref.read(transactionsProvider.notifier).add(txn);
     }
@@ -388,24 +417,35 @@ class DebtCreditNotifier extends StateNotifier<List<DebtCredit>> {
     await HiveService.addDebtCredit(dc);
     state = HiveService.getDebtCredits();
     _ref.read(accountsProvider.notifier).refresh();
+    _ref.read(transactionsProvider.notifier).refresh();
   }
 
   Future<void> update(DebtCredit old, DebtCredit updated) async {
     await HiveService.updateDebtCredit(old, updated);
     state = HiveService.getDebtCredits();
     _ref.read(accountsProvider.notifier).refresh();
+    _ref.read(transactionsProvider.notifier).refresh();
   }
 
   Future<void> delete(DebtCredit dc) async {
     await HiveService.deleteDebtCredit(dc);
     state = HiveService.getDebtCredits();
     _ref.read(accountsProvider.notifier).refresh();
+    _ref.read(transactionsProvider.notifier).refresh();
   }
 
   Future<void> close(DebtCredit dc, {String? targetAccountId, bool affectBalance = true}) async {
     await HiveService.closeDebtCredit(dc, targetAccountId: targetAccountId, affectBalance: affectBalance);
     state = HiveService.getDebtCredits();
     _ref.read(accountsProvider.notifier).refresh();
+    _ref.read(transactionsProvider.notifier).refresh();
+  }
+
+  Future<void> reopen(DebtCredit dc) async {
+    await HiveService.reopenDebtCredit(dc);
+    state = HiveService.getDebtCredits();
+    _ref.read(accountsProvider.notifier).refresh();
+    _ref.read(transactionsProvider.notifier).refresh();
   }
 
   void refresh() {

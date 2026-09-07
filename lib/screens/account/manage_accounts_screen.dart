@@ -9,6 +9,8 @@ import '../../models/models.dart';
 import '../../providers/providers.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/add_account_sheet.dart';
+import '../../widgets/account_icon.dart';
+import '../../widgets/card_network_badge.dart';
 
 class ManageAccountsScreen extends ConsumerWidget {
   const ManageAccountsScreen({super.key});
@@ -203,25 +205,9 @@ class _AccountManageCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(color: AppColors.darkBorder, borderRadius: BorderRadius.circular(2)),
-                  ),
-                ),
-                const SizedBox(height: 16),
                 Row(
                   children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: Color(account.colorValue).withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Center(child: Text(account.emoji, style: const TextStyle(fontSize: 22))),
-                    ),
+                    AccountIcon(account: account, size: 22),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -281,6 +267,7 @@ class _AccountManageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = Color(account.colorValue);
     final isEnabled = account.isEnabledForCalc;
 
@@ -306,7 +293,7 @@ class _AccountManageCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: color.withValues(alpha: 0.3)),
                   ),
-                  child: Center(child: Text(account.emoji, style: const TextStyle(fontSize: 24))),
+                  child: Center(child: AccountIcon(account: account, size: 24)),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -337,7 +324,13 @@ class _AccountManageCard extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          if (!isEnabled)
+                          CardNetworkBadge(
+                            cardType: account.cardType,
+                            onCard: false,
+                            scale: 0.75,
+                          ),
+                          const SizedBox(width: 8),
+                          if (!isEnabled) ...[
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                               decoration: BoxDecoration(
@@ -347,6 +340,20 @@ class _AccountManageCard extends StatelessWidget {
                               child: const Text(
                                 'Excluded from Net',
                                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.expense),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          if (account.balance < 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: AppColors.expense.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text(
+                                'Negative',
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.expense),
                               ),
                             ),
                         ],
@@ -395,7 +402,7 @@ class _AccountManageCard extends StatelessWidget {
                 IconButton(
                   tooltip: 'Edit Account Details',
                   style: IconButton.styleFrom(
-                    backgroundColor: AppColors.darkCardAlt,
+                    backgroundColor: isDark ? AppColors.darkCardAlt : AppColors.lightBg,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   icon: const Icon(Icons.tune_rounded, size: 18),
@@ -411,13 +418,13 @@ class _AccountManageCard extends StatelessWidget {
                 IconButton(
                   tooltip: isEnabled ? 'Included in Net Wallet (Tap to exclude)' : 'Excluded from Net Wallet (Tap to include)',
                   style: IconButton.styleFrom(
-                    backgroundColor: isEnabled ? AppColors.primary.withValues(alpha: 0.15) : AppColors.darkCardAlt,
+                    backgroundColor: isEnabled ? AppColors.primary.withValues(alpha: 0.15) : (isDark ? AppColors.darkCardAlt : AppColors.lightBg),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   icon: Icon(
                     isEnabled ? Icons.visibility_rounded : Icons.visibility_off_rounded,
                     size: 18,
-                    color: isEnabled ? AppColors.primary : AppColors.darkTextMuted,
+                    color: isEnabled ? AppColors.primary : (isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted),
                   ),
                   onPressed: () => ref.read(accountsProvider.notifier).toggleEnable(account),
                 ),

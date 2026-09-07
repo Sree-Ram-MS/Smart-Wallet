@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart' hide Category, CategoryIcon;
+import 'package:flex_color_picker/flex_color_picker.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/models.dart';
 import '../../providers/providers.dart';
@@ -274,9 +276,15 @@ class _CatList extends StatelessWidget {
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                   decoration: BoxDecoration(
-                                    color: AppColors.darkCardAlt,
+                                    color: Theme.of(context).brightness == Brightness.dark
+                                        ? AppColors.darkCardAlt
+                                        : AppColors.lightBg,
                                     borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: AppColors.darkBorder),
+                                    border: Border.all(
+                                      color: Theme.of(context).brightness == Brightness.dark
+                                          ? AppColors.darkBorder
+                                          : AppColors.lightBorder,
+                                    ),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -445,6 +453,48 @@ class _CategorySheetState extends State<_CategorySheet> {
     }
   }
 
+  Future<void> _pickCustomColor() async {
+    final Color colorBefore = _color;
+    final bool colorChanged = await ColorPicker(
+      color: _color,
+      onColorChanged: (Color color) => setState(() => _color = color),
+      width: 40,
+      height: 40,
+      borderRadius: 10,
+      spacing: 5,
+      runSpacing: 5,
+      wheelDiameter: 165,
+      heading: Text('Select Color Theme', style: Theme.of(context).textTheme.titleSmall),
+      subheading: Text('Select color shade', style: Theme.of(context).textTheme.bodySmall),
+      wheelSubheading: Text('Selected color and its shades', style: Theme.of(context).textTheme.bodySmall),
+      showMaterialName: false,
+      showColorName: false,
+      showColorCode: true,
+      copyPasteBehavior: const ColorPickerCopyPasteBehavior(
+        longPressMenu: true,
+      ),
+      materialNameTextStyle: Theme.of(context).textTheme.bodySmall,
+      colorNameTextStyle: Theme.of(context).textTheme.bodySmall,
+      colorCodeTextStyle: Theme.of(context).textTheme.bodySmall,
+      pickersEnabled: const <ColorPickerType, bool>{
+        ColorPickerType.both: false,
+        ColorPickerType.primary: true,
+        ColorPickerType.accent: true,
+        ColorPickerType.bw: false,
+        ColorPickerType.custom: false,
+        ColorPickerType.wheel: true,
+      },
+    ).showPickerDialog(
+      context,
+      actionsPadding: const EdgeInsets.all(16),
+      constraints: const BoxConstraints(minWidth: 300, minHeight: 460, maxWidth: 360),
+    );
+
+    if (!colorChanged) {
+      setState(() => _color = colorBefore);
+    }
+  }
+
   Future<void> _save() async {
     if (_nameCtrl.text.trim().isEmpty) return;
     setState(() => _saving = true);
@@ -484,6 +534,7 @@ class _CategorySheetState extends State<_CategorySheet> {
         .toList();
 
     final hasCustomImage = _imagePath != null && _imagePath!.isNotEmpty && File(_imagePath!).existsSync();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -492,12 +543,6 @@ class _CategorySheetState extends State<_CategorySheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(color: AppColors.darkBorder, borderRadius: BorderRadius.circular(2)),
-            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
               child: Row(
@@ -617,32 +662,29 @@ class _CategorySheetState extends State<_CategorySheet> {
 
                     if (_showEmoji) ...[
                       const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppColors.darkCardAlt,
+                      SizedBox(
+                        height: 250,
+                        child: ClipRRect(
                           borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Wrap(
-                          spacing: 10,
-                          runSpacing: 8,
-                          children: [
-                            '📦','💼','🍔','🚗','🛍️','🧾','🏥','🎬','📚','🏠',
-                            '💻','📈','🎁','✈️','⚽','🎮','🐾','🌿','💊','🔧',
-                            '💰','🧴','☕','🎵','🏋️','📱','🛒','🏦','💡','🎓',
-                            '🍕','🍎','🚌','⛽','🚆','🎟️','🍿','🎧','👗','🚕',
-                            '🚲','🏍️','⛵','🏖️','🍣','🍩','🍦','🍻','🍷','🎂',
-                          ].map((e) => GestureDetector(
-                            onTap: () => setState(() {
-                              _icon = e;
-                              _imagePath = null;
-                              _showEmoji = false;
-                            }),
-                            child: Padding(
-                              padding: const EdgeInsets.all(2),
-                              child: Text(e, style: const TextStyle(fontSize: 26)),
+                          child: EmojiPicker(
+                            onEmojiSelected: (_, emoji) {
+                              setState(() {
+                                _icon = emoji.emoji;
+                                _imagePath = null;
+                                _showEmoji = false;
+                              });
+                            },
+                            config: Config(
+                              height: 250,
+                              emojiViewConfig: EmojiViewConfig(
+                                columns: 8,
+                                backgroundColor: isDark ? AppColors.darkCardAlt : AppColors.lightCard,
+                              ),
+                              categoryViewConfig: CategoryViewConfig(
+                                backgroundColor: isDark ? AppColors.darkCard : AppColors.lightBg,
+                              ),
                             ),
-                          )).toList(),
+                          ),
                         ),
                       ),
                     ],
@@ -664,7 +706,7 @@ class _CategorySheetState extends State<_CategorySheet> {
                         labelText: 'Parent Category (Optional)',
                         helperText: 'Select a parent to make this a subcategory',
                       ),
-                      dropdownColor: AppColors.darkCard,
+                      dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
                       items: [
                         const DropdownMenuItem(
                           value: null,
@@ -699,27 +741,58 @@ class _CategorySheetState extends State<_CategorySheet> {
                     ),
 
                     const SizedBox(height: 16),
-                    Text('Color Theme', style: Theme.of(context).textTheme.bodyMedium),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Color Theme', style: Theme.of(context).textTheme.bodyMedium),
+                        TextButton.icon(
+                          onPressed: _pickCustomColor,
+                          icon: const Icon(Icons.palette_outlined, size: 16),
+                          label: const Text('Custom Color', style: TextStyle(fontSize: 12)),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 10,
-                      runSpacing: 8,
-                      children: AppColors.chartColors.map((c) => GestureDetector(
-                        onTap: () => setState(() => _color = c),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: c,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: _color == c ? Colors.white : Colors.transparent,
-                              width: 2.5,
+                      runSpacing: 10,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        ...AppColors.chartColors.map((c) => GestureDetector(
+                          onTap: () => setState(() => _color = c),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: c,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: _color.toARGB32() == c.toARGB32()
+                                    ? (isDark ? Colors.white : Colors.black)
+                                    : Colors.transparent,
+                                width: 2,
+                              ),
+                              boxShadow: _color.toARGB32() == c.toARGB32()
+                                  ? [BoxShadow(color: c.withValues(alpha: 0.5), blurRadius: 8)]
+                                  : null,
                             ),
                           ),
+                        )),
+                        GestureDetector(
+                          onTap: _pickCustomColor,
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: _color,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: isDark ? Colors.white70 : Colors.black54, width: 1.5),
+                            ),
+                            child: const Icon(Icons.colorize_rounded, size: 18, color: Colors.white),
+                          ),
                         ),
-                      )).toList(),
+                      ],
                     ),
 
                     const SizedBox(height: 24),

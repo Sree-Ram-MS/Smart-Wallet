@@ -258,6 +258,15 @@ class HiveService {
     }
   }
 
+  static Category? _findCategory(String? id) {
+    if (id == null) return null;
+    try {
+      return categoriesBox.values.firstWhere((c) => c.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
   // Planned Payments
   static List<PlannedPayment> getPlanned() {
     final list = plannedBox.values.toList();
@@ -278,20 +287,126 @@ class HiveService {
 
   static Future<void> addDebtCredit(DebtCredit dc) async {
     dc.id = _uuid.v4();
+    if (dc.affectsAccount) {
+      final isLent = dc.direction == 'lent';
+      final noteSuffix = dc.notes.trim().isNotEmpty ? ' (${dc.notes.trim()})' : '';
+      final expectedType = isLent ? 'expense' : 'income';
+      final cat = _findCategory(dc.categoryId);
+      final validCategoryId = (cat != null && cat.type == expectedType) ? dc.categoryId : null;
+      final txn = Transaction(
+        id: '',
+        type: expectedType,
+        amount: dc.amount,
+        accountId: dc.accountId,
+        categoryId: validCategoryId,
+        date: dc.startDate,
+        note: isLent
+            ? 'Lent to ${dc.personName}$noteSuffix'
+            : 'Borrowed from ${dc.personName}$noteSuffix',
+      );
+      await addTransaction(txn);
+      dc.transactionId = txn.id;
+    }
     await debtCreditBox.add(dc);
-    _applyDebtCreditToBalances(dc, reverse: false);
   }
 
   static Future<void> updateDebtCredit(DebtCredit old, DebtCredit updated) async {
-    _applyDebtCreditToBalances(old, reverse: true);
     updated.id = old.id;
+    final isLent = updated.direction == 'lent';
+    final noteSuffix = updated.notes.trim().isNotEmpty ? ' (${updated.notes.trim()})' : '';
+    final expectedType = isLent ? 'expense' : 'income';
+    final cat = _findCategory(updated.categoryId);
+    final validCategoryId = (cat != null && cat.type == expectedType) ? updated.categoryId : null;
+
+    if (old.transactionId != null && old.transactionId!.isNotEmpty) {
+      final oldTxn = transactionsBox.values.firstWhereOrNull((t) => t.id == old.transactionId);
+      if (updated.affectsAccount && updated.status == 'active') {
+        if (oldTxn != null) {
+          final updatedTxn = Transaction(
+            id: oldTxn.id,
+            type: expectedType,
+            amount: updated.amount,
+            accountId: updated.accountId,
+            categoryId: validCategoryId,
+            date: updated.startDate,
+            note: isLent
+                ? 'Lent to ${updated.personName}$noteSuffix'
+                : 'Borrowed from ${updated.personName}$noteSuffix',
+          );
+          await updateTransaction(oldTxn, updatedTxn);
+          updated.transactionId = updatedTxn.id;
+        } else {
+          final newTxn = Transaction(
+            id: '',
+            type: expectedType,
+            amount: updated.amount,
+            accountId: updated.accountId,
+            categoryId: validCategoryId,
+            date: updated.startDate,
+            note: isLent
+                ? 'Lent to ${updated.personName}$noteSuffix'
+                : 'Borrowed from ${updated.personName}$noteSuffix',
+          );
+          await addTransaction(newTxn);
+          updated.transactionId = newTxn.id;
+        }
+      } else {
+        if (oldTxn != null) {
+          await deleteTransaction(oldTxn);
+        }
+        updated.transactionId = null;
+      }
+    } else {
+      _applyDebtCreditToBalances(old, reverse: true);
+      if (updated.affectsAccount && updated.status == 'active') {
+        final newTxn = Transaction(
+          id: '',
+          type: expectedType,
+          amount: updated.amount,
+          accountId: updated.accountId,
+          categoryId: validCategoryId,
+          date: updated.startDate,
+          note: isLent
+              ? 'Lent to ${updated.personName}$noteSuffix'
+              : 'Borrowed from ${updated.personName}$noteSuffix',
+        );
+        await addTransaction(newTxn);
+        updated.transactionId = newTxn.id;
+      }
+    }
+
     await old.delete();
     await debtCreditBox.add(updated);
-    _applyDebtCreditToBalances(updated, reverse: false);
   }
 
   static Future<void> deleteDebtCredit(DebtCredit dc) async {
-    _applyDebtCreditToBalances(dc, reverse: true);
+    // 1. Delete initial transaction if exists
+    if (dc.transactionId != null && dc.transactionId!.isNotEmpty) {
+      final txn = transactionsBox.values.firstWhereOrNull((t) => t.id == dc.transactionId);
+      if (txn != null) {
+        await deleteTransaction(txn);
+      }
+    } else {
+      _applyDebtCreditToBalances(dc, reverse: true);
+    }
+
+    // 2. Also delete settlement transaction if it was closed
+    Transaction? settleTxn;
+    if (dc.settlementTransactionId != null && dc.settlementTransactionId!.isNotEmpty) {
+      settleTxn = transactionsBox.values.firstWhereOrNull((t) => t.id == dc.settlementTransactionId);
+    }
+    if (settleTxn == null && dc.status == 'closed') {
+      final isLent = dc.direction == 'lent';
+      final expectedType = isLent ? 'income' : 'expense';
+      final notePrefix = isLent ? 'Debt recovered from ${dc.personName}' : 'Debt repaid to ${dc.personName}';
+      settleTxn = transactionsBox.values.firstWhereOrNull(
+        (t) => t.type == expectedType && t.amount == dc.amount && t.note.startsWith(notePrefix),
+      );
+    }
+    if (settleTxn != null) {
+      await deleteTransaction(settleTxn);
+    }
+
     await dc.delete();
   }
 
@@ -299,18 +414,53 @@ class HiveService {
     if (dc.status == 'closed') return;
     if (affectBalance) {
       final accountId = targetAccountId ?? dc.accountId;
-      final acc = _findAccount(accountId);
-      if (acc != null) {
-        if (dc.direction == 'lent') {
-          acc.balance += dc.amount;
-          await acc.save();
-        } else if (dc.direction == 'borrowed') {
-          acc.balance -= dc.amount;
-          await acc.save();
-        }
-      }
+      final isLent = dc.direction == 'lent';
+      final noteSuffix = dc.notes.trim().isNotEmpty ? ' (${dc.notes.trim()})' : '';
+      final expectedType = isLent ? 'income' : 'expense';
+      final cat = _findCategory(dc.categoryId);
+      final validCategoryId = (cat != null && cat.type == expectedType) ? dc.categoryId : null;
+      final txn = Transaction(
+        id: '',
+        type: expectedType,
+        amount: dc.amount,
+        accountId: accountId,
+        categoryId: validCategoryId,
+        date: DateTime.now(),
+        note: isLent
+            ? 'Debt recovered from ${dc.personName}$noteSuffix'
+            : 'Debt repaid to ${dc.personName}$noteSuffix',
+      );
+      await addTransaction(txn);
+      dc.settlementTransactionId = txn.id;
     }
     dc.status = 'closed';
+    await dc.save();
+  }
+
+  static Future<void> reopenDebtCredit(DebtCredit dc) async {
+    if (dc.status != 'closed') return;
+
+    // Locate and delete settlement transaction if it exists
+    Transaction? settleTxn;
+    if (dc.settlementTransactionId != null && dc.settlementTransactionId!.isNotEmpty) {
+      settleTxn = transactionsBox.values.firstWhereOrNull((t) => t.id == dc.settlementTransactionId);
+    }
+    if (settleTxn == null) {
+      // Fallback for debts settled before settlementTransactionId tracking was introduced
+      final isLent = dc.direction == 'lent';
+      final expectedType = isLent ? 'income' : 'expense';
+      final notePrefix = isLent ? 'Debt recovered from ${dc.personName}' : 'Debt repaid to ${dc.personName}';
+      settleTxn = transactionsBox.values.firstWhereOrNull(
+        (t) => t.type == expectedType && t.amount == dc.amount && t.note.startsWith(notePrefix),
+      );
+    }
+
+    if (settleTxn != null) {
+      await deleteTransaction(settleTxn);
+    }
+
+    dc.settlementTransactionId = null;
+    dc.status = 'active';
     await dc.save();
   }
 
@@ -461,7 +611,7 @@ class HiveService {
   }
 }
 
-extension _ListExt<T> on List<T> {
+extension _IterableExt<T> on Iterable<T> {
   T? firstWhereOrNull(bool Function(T) test) {
     for (final e in this) {
       if (test(e)) return e;

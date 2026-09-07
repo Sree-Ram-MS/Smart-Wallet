@@ -10,6 +10,7 @@ import '../../providers/providers.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/add_transaction_sheet.dart';
 import '../../widgets/category_icon.dart';
+import '../../widgets/account_icon.dart';
 
 class TemplatesScreen extends ConsumerWidget {
   const TemplatesScreen({super.key});
@@ -236,6 +237,8 @@ class _TemplateSheetState extends State<_TemplateSheet> {
         ? widget.categories.where((c) => c.parentId == _selectedParentCategoryId).toList()
         : <Category>[];
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
@@ -243,9 +246,6 @@ class _TemplateSheetState extends State<_TemplateSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 8),
-            Container(width: 36, height: 4,
-                decoration: BoxDecoration(color: AppColors.darkBorder, borderRadius: BorderRadius.circular(2))),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
               child: Row(children: [
@@ -270,14 +270,15 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: _type,
-                    items: ['income', 'expense', 'transfer'].map((t) => DropdownMenuItem(value: t, child: Text(t[0].toUpperCase() + t.substring(1)))).toList(),
+                    isExpanded: true,
+                    items: ['income', 'expense', 'transfer'].map((t) => DropdownMenuItem(value: t, child: Text(t[0].toUpperCase() + t.substring(1), overflow: TextOverflow.ellipsis))).toList(),
                     onChanged: (v) => setState(() {
                       _type = v ?? 'expense';
                       _selectedParentCategoryId = null;
                       _selectedSubcategoryId = null;
                     }),
                     decoration: const InputDecoration(labelText: 'Type'),
-                    dropdownColor: AppColors.darkCard,
+                    dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -289,10 +290,22 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: _accountId,
-                    items: widget.accounts.map((a) => DropdownMenuItem(value: a.id, child: Text('${a.emoji} ${a.name}'))).toList(),
+                    isExpanded: true,
+                    items: widget.accounts
+                        .map((a) => DropdownMenuItem(
+                              value: a.id,
+                              child: Row(
+                                children: [
+                                  AccountIcon(account: a, size: 18),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: Text(a.name, overflow: TextOverflow.ellipsis)),
+                                ],
+                              ),
+                            ))
+                        .toList(),
                     onChanged: (v) => setState(() => _accountId = v),
                     decoration: const InputDecoration(labelText: 'Account'),
-                    dropdownColor: AppColors.darkCard,
+                    dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
                   ),
                   const SizedBox(height: 12),
                   if (_type != 'transfer') ...[
@@ -304,16 +317,16 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                             child: DropdownButtonFormField<String?>(
                               key: ValueKey('template_parent_$_selectedParentCategoryId'),
                               initialValue: _selectedParentCategoryId,
+                              isExpanded: true,
                               items: [
-                                const DropdownMenuItem(value: null, child: Text('None')),
+                                const DropdownMenuItem(value: null, child: Text('None', overflow: TextOverflow.ellipsis)),
                                 ...parentCategories.map((c) => DropdownMenuItem(
                                       value: c.id,
                                       child: Row(
-                                        mainAxisSize: MainAxisSize.min,
                                         children: [
                                           CategoryIcon(category: c, size: 16),
                                           const SizedBox(width: 6),
-                                          Flexible(
+                                          Expanded(
                                             child: Text(c.name,
                                                 style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                                                 overflow: TextOverflow.ellipsis),
@@ -327,7 +340,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                                 _selectedSubcategoryId = null;
                               }),
                               decoration: const InputDecoration(labelText: 'Category'),
-                              dropdownColor: AppColors.darkCard,
+                              dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -335,19 +348,26 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                             child: DropdownButtonFormField<String?>(
                               key: ValueKey('template_sub_$_selectedSubcategoryId'),
                               initialValue: _selectedSubcategoryId,
+                              isExpanded: true,
                               items: [
-                                const DropdownMenuItem(
+                                DropdownMenuItem(
                                   value: null,
-                                  child: Text('All / General', style: TextStyle(color: AppColors.darkTextSecondary, fontSize: 13)),
+                                  child: Text(
+                                    'All / General',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                      fontSize: 13,
+                                    ),
+                                  ),
                                 ),
                                 ...subcategories.map((sub) => DropdownMenuItem(
                                       value: sub.id,
                                       child: Row(
-                                        mainAxisSize: MainAxisSize.min,
                                         children: [
                                           CategoryIcon(category: sub, size: 16),
                                           const SizedBox(width: 6),
-                                          Flexible(
+                                          Expanded(
                                             child: Text(sub.name, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
                                           ),
                                         ],
@@ -356,7 +376,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                               ],
                               onChanged: (v) => setState(() => _selectedSubcategoryId = v),
                               decoration: const InputDecoration(labelText: 'Subcategory'),
-                              dropdownColor: AppColors.darkCard,
+                              dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
                             ),
                           ),
                         ],
@@ -366,15 +386,16 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                       DropdownButtonFormField<String?>(
                         key: ValueKey('template_parent_$_selectedParentCategoryId'),
                         initialValue: _selectedParentCategoryId,
+                        isExpanded: true,
                         items: [
-                          const DropdownMenuItem(value: null, child: Text('No Category')),
+                          const DropdownMenuItem(value: null, child: Text('No Category', overflow: TextOverflow.ellipsis)),
                           ...parentCategories.map((c) => DropdownMenuItem(
                                 value: c.id,
                                 child: Row(
                                   children: [
                                     CategoryIcon(category: c, size: 18),
                                     const SizedBox(width: 8),
-                                    Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                    Expanded(child: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
                                   ],
                                 ),
                               )),
@@ -384,7 +405,7 @@ class _TemplateSheetState extends State<_TemplateSheet> {
                           _selectedSubcategoryId = null;
                         }),
                         decoration: const InputDecoration(labelText: 'Category'),
-                        dropdownColor: AppColors.darkCard,
+                        dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
                       ),
                       const SizedBox(height: 12),
                     ],

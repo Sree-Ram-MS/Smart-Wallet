@@ -39,7 +39,7 @@ class AccountIcon extends StatelessWidget {
             width: size,
             height: size,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _buildEmojiFallback(effectiveEmoji),
+            errorBuilder: (_, _, _) => _buildEmojiFallback(effectiveEmoji),
           ),
         );
       }

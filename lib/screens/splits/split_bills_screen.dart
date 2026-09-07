@@ -8,6 +8,7 @@ import '../../providers/providers.dart';
 import '../../widgets/add_transaction_sheet.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/category_icon.dart';
+import '../../widgets/account_icon.dart';
 
 class SplitBillsScreen extends ConsumerWidget {
   const SplitBillsScreen({super.key});
@@ -40,6 +41,11 @@ class SplitBillsScreen extends ConsumerWidget {
     final pendingTxns = splitTxns.where((t) => t.splits!.any((s) => !s.isPaid)).toList();
     final settledTxns = splitTxns.where((t) => t.splits!.every((s) => s.isPaid)).toList();
 
+    final pendingCount = pendingTxns.length;
+    final settledCount = settledTxns.length;
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -57,12 +63,12 @@ class SplitBillsScreen extends ConsumerWidget {
                 onPressed: () => Scaffold.of(ctx).openDrawer(),
               ),
             ),
-            title: const Text('Split Bills & Expenses'),
-            bottom: const TabBar(
+            title: const Text('Split Bills & Shared'),
+            bottom: TabBar(
               tabs: [
-                Tab(text: 'Pending'),
-                Tab(text: 'Settled'),
-                Tab(text: 'All'),
+                Tab(text: 'Pending ($pendingCount)'),
+                Tab(text: 'Settled ($settledCount)'),
+                const Tab(text: 'All Splits'),
               ],
             ),
           ),
@@ -86,7 +92,7 @@ class SplitBillsScreen extends ConsumerWidget {
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [AppColors.primary.withValues(alpha: 0.15), AppColors.darkCard],
+                      colors: [AppColors.primary.withValues(alpha: 0.15), isDark ? AppColors.darkCard : AppColors.lightCard],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -99,22 +105,22 @@ class SplitBillsScreen extends ConsumerWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Total Paid Out', style: TextStyle(fontSize: 11, color: AppColors.darkTextSecondary)),
+                            Text('Total Paid Out', style: TextStyle(fontSize: 11, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)),
                             const SizedBox(height: 3),
                             Text(
                               '${CurrencyUtil.symbol(currency)}${totalSplitOutflow.toStringAsFixed(0)}',
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.darkText),
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? AppColors.darkText : AppColors.lightText),
                             ),
                           ],
                         ),
                       ),
-                      Container(width: 1, height: 32, color: AppColors.darkBorder),
+                      Container(width: 1, height: 32, color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Pending to Collect', style: TextStyle(fontSize: 11, color: AppColors.darkTextSecondary)),
+                            Text('Pending to Collect', style: TextStyle(fontSize: 11, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)),
                             const SizedBox(height: 3),
                             Text(
                               '${CurrencyUtil.symbol(currency)}${totalPending.toStringAsFixed(0)}',
@@ -123,13 +129,13 @@ class SplitBillsScreen extends ConsumerWidget {
                           ],
                         ),
                       ),
-                      Container(width: 1, height: 32, color: AppColors.darkBorder),
+                      Container(width: 1, height: 32, color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Collected', style: TextStyle(fontSize: 11, color: AppColors.darkTextSecondary)),
+                            Text('Collected', style: TextStyle(fontSize: 11, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)),
                             const SizedBox(height: 3),
                             Text(
                               '${CurrencyUtil.symbol(currency)}${totalRecovered.toStringAsFixed(0)}',
@@ -178,6 +184,7 @@ class _SplitList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     if (items.isEmpty) {
       return Center(
         child: Column(
@@ -185,11 +192,11 @@ class _SplitList extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: const BoxDecoration(
-                color: AppColors.darkCardAlt,
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkCardAlt : AppColors.lightBg,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.call_split_rounded, size: 48, color: AppColors.darkTextMuted),
+              child: Icon(Icons.call_split_rounded, size: 48, color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted),
             ),
             const SizedBox(height: 16),
             const Text(
@@ -197,9 +204,9 @@ class _SplitList extends StatelessWidget {
               style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'When you split expenses with friends, they will appear here.',
-              style: TextStyle(color: AppColors.darkTextSecondary, fontSize: 13),
+              style: TextStyle(color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary, fontSize: 13),
               textAlign: TextAlign.center,
             ),
           ],
@@ -247,6 +254,7 @@ class _SplitCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final splits = txn.splits ?? [];
     double totalFriends = 0;
     double collected = 0;
@@ -266,10 +274,10 @@ class _SplitCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.darkCard,
+        color: isDark ? AppColors.darkCard : AppColors.lightCard,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isFullySettled ? AppColors.income.withValues(alpha: 0.3) : AppColors.darkBorder,
+          color: isFullySettled ? AppColors.income.withValues(alpha: 0.3) : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
         ),
       ),
       child: Column(
@@ -294,7 +302,7 @@ class _SplitCard extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         '${DateUtil.formatDate(txn.date)} • ${account != null ? '${account!.emoji} ${account!.name}' : 'Account'}',
-                        style: const TextStyle(fontSize: 12, color: AppColors.darkTextSecondary),
+                        style: TextStyle(fontSize: 12, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
                       ),
                     ],
                   ),
@@ -329,7 +337,7 @@ class _SplitCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: isFullySettled ? AppColors.income : AppColors.darkTextSecondary,
+                        color: isFullySettled ? AppColors.income : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
                       ),
                     ),
                     Text(
@@ -337,7 +345,7 @@ class _SplitCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
-                        color: isFullySettled ? AppColors.income : AppColors.darkText,
+                        color: isFullySettled ? AppColors.income : (isDark ? AppColors.darkText : AppColors.lightText),
                       ),
                     ),
                   ],
@@ -347,7 +355,7 @@ class _SplitCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
                     value: progress,
-                    backgroundColor: AppColors.darkCardAlt,
+                    backgroundColor: isDark ? AppColors.darkCardAlt : AppColors.lightBg,
                     valueColor: AlwaysStoppedAnimation<Color>(
                       isFullySettled ? AppColors.income : AppColors.primary,
                     ),
@@ -366,18 +374,18 @@ class _SplitCard extends StatelessWidget {
             final recAcc = s.paidAccountId != null ? accounts.firstWhereOrNull((a) => a.id == s.paidAccountId) : null;
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: AppColors.darkBorder, width: 0.5)),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: isDark ? AppColors.darkBorder : AppColors.lightBorder, width: 0.5)),
               ),
               child: Row(
                 children: [
                   CircleAvatar(
                     radius: 14,
-                    backgroundColor: s.isPaid ? AppColors.income.withValues(alpha: 0.15) : AppColors.darkCardAlt,
+                    backgroundColor: s.isPaid ? AppColors.income.withValues(alpha: 0.15) : (isDark ? AppColors.darkCardAlt : AppColors.lightBg),
                     child: Icon(
                       s.isPaid ? Icons.check_rounded : Icons.person_outline_rounded,
                       size: 16,
-                      color: s.isPaid ? AppColors.income : AppColors.darkTextSecondary,
+                      color: s.isPaid ? AppColors.income : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -390,7 +398,7 @@ class _SplitCard extends StatelessWidget {
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 13,
-                            color: s.isPaid ? AppColors.darkText : Colors.white,
+                            color: s.isPaid ? (isDark ? AppColors.darkText : AppColors.lightText) : (isDark ? Colors.white : AppColors.lightText),
                           ),
                         ),
                         if (s.isPaid) ...[
@@ -412,7 +420,7 @@ class _SplitCard extends StatelessWidget {
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
-                      color: s.isPaid ? AppColors.income : Colors.white,
+                      color: s.isPaid ? AppColors.income : (isDark ? Colors.white : AppColors.lightText),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -494,116 +502,118 @@ class _SplitCard extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (sheetCtx) => StatefulBuilder(
-        builder: (ctx, setModalState) => Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-            left: 20,
-            right: 20,
-            top: 20,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(color: AppColors.darkBorder, borderRadius: BorderRadius.circular(2)),
+        builder: (ctx, setModalState) {
+          final isDark = Theme.of(ctx).brightness == Brightness.dark;
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              left: 20,
+              right: 20,
+              top: 20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.payments_rounded, color: AppColors.income),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Collect ₹${member.amount.toStringAsFixed(0)} from ${member.name}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  const Icon(Icons.payments_rounded, color: AppColors.income),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Collect ₹${member.amount.toStringAsFixed(0)} from ${member.name}',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'This amount will be added to your selected account balance.',
-                style: TextStyle(fontSize: 12, color: AppColors.darkTextSecondary),
-              ),
-              const SizedBox(height: 16),
-
-              // Account Selector
-              DropdownButtonFormField<String>(
-                initialValue: selectedAccId,
-                decoration: const InputDecoration(labelText: 'Received In Account'),
-                dropdownColor: AppColors.darkCard,
-                items: accounts
-                    .map((a) => DropdownMenuItem(
-                          value: a.id,
-                          child: Text('${a.emoji} ${a.name} (${CurrencyUtil.format(a.balance, a.currency)})'),
-                        ))
-                    .toList(),
-                onChanged: (v) {
-                  if (v != null) setModalState(() => selectedAccId = v);
-                },
-              ),
-              const SizedBox(height: 14),
-
-              // Date Picker
-              InkWell(
-                onTap: () async {
-                  final d = await showDatePicker(
-                    context: ctx,
-                    initialDate: selectedDate,
-                    firstDate: DateTime(2020),
-                    lastDate: DateTime(2100),
-                  );
-                  if (d != null) {
-                    setModalState(() => selectedDate = d);
-                  }
-                },
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Date of Payment',
-                    suffixIcon: Icon(Icons.calendar_today_rounded),
-                  ),
-                  child: Text(DateUtil.formatDate(selectedDate)),
+                const SizedBox(height: 6),
+                Text(
+                  'This amount will be added to your selected account balance.',
+                  style: TextStyle(fontSize: 12, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
                 ),
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
-              // Confirm button
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.income,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: () async {
-                    Navigator.pop(sheetCtx);
-                    await ref.read(transactionsProvider.notifier).markSplitPaid(
-                          txn,
-                          member.id,
-                          paidDate: selectedDate,
-                          targetAccountId: selectedAccId,
-                        );
-                    if (context.mounted) {
-                      final acc = accounts.firstWhereOrNull((a) => a.id == selectedAccId);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Collected ₹${member.amount.toStringAsFixed(0)} from ${member.name} & credited to ${acc?.name ?? 'account'}!'),
-                          backgroundColor: AppColors.darkCard,
-                        ),
-                      );
+                // Account Selector
+                DropdownButtonFormField<String>(
+                  initialValue: selectedAccId,
+                  decoration: const InputDecoration(labelText: 'Received In Account'),
+                  dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+                  items: accounts
+                      .map((a) => DropdownMenuItem(
+                            value: a.id,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                AccountIcon(account: a, size: 18),
+                                const SizedBox(width: 8),
+                                Text('${a.name} (${CurrencyUtil.format(a.balance, a.currency)})'),
+                              ],
+                            ),
+                          ))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setModalState(() => selectedAccId = v);
+                  },
+                ),
+                const SizedBox(height: 14),
+
+                // Date Picker
+                InkWell(
+                  onTap: () async {
+                    final d = await showDatePicker(
+                      context: ctx,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2100),
+                    );
+                    if (d != null) {
+                      setModalState(() => selectedDate = d);
                     }
                   },
-                  child: const Text('Confirm Payment Received', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Date of Payment',
+                      suffixIcon: Icon(Icons.calendar_today_rounded),
+                    ),
+                    child: Text(DateUtil.formatDate(selectedDate)),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
-            ],
-          ),
-        ),
+                const SizedBox(height: 20),
+
+                // Confirm button
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.income,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () async {
+                      Navigator.pop(sheetCtx);
+                      await ref.read(transactionsProvider.notifier).markSplitPaid(
+                            txn,
+                            member.id,
+                            paidDate: selectedDate,
+                            targetAccountId: selectedAccId,
+                          );
+                      if (context.mounted) {
+                        final acc = accounts.firstWhereOrNull((a) => a.id == selectedAccId);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            behavior: SnackBarBehavior.floating,
+                            content: Text('Collected ₹${member.amount.toStringAsFixed(0)} from ${member.name} & credited to ${acc?.name ?? 'account'}!'),
+                          ),
+                        );
+                      }
+                    },
+                    child: const Text('Confirm Payment Received', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

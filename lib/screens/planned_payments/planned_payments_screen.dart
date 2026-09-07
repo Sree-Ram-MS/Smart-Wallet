@@ -3,12 +3,39 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uuid/uuid.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/utils.dart';
 import '../../models/models.dart';
 import '../../providers/providers.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/category_icon.dart';
+import '../../widgets/account_icon.dart';
+
+const _uuid = Uuid();
+
+class _SplitMemberEntry {
+  final String id;
+  final TextEditingController nameCtrl;
+  final TextEditingController amountCtrl;
+  bool isPaid;
+
+  _SplitMemberEntry({
+    required this.id,
+    required String name,
+    required double amount,
+    this.isPaid = false,
+  })  : nameCtrl = TextEditingController(text: name),
+        amountCtrl = TextEditingController(
+            text: amount > 0
+                ? amount.toStringAsFixed(amount.truncateToDouble() == amount ? 0 : 2)
+                : '');
+
+  void dispose() {
+    nameCtrl.dispose();
+    amountCtrl.dispose();
+  }
+}
 
 class PlannedPaymentsScreen extends ConsumerWidget {
   const PlannedPaymentsScreen({super.key});
@@ -161,10 +188,31 @@ class PlannedPaymentsScreen extends ConsumerWidget {
                                         fontWeight: overdue || isPaidToday ? FontWeight.w600 : FontWeight.normal,
                                       ),
                                     ),
-                                    Text(
-                                      '${acc?.emoji ?? '💳'} ${acc?.name ?? ''}',
-                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11),
-                                    ),
+                                     Text(
+                                       '${acc?.emoji ?? '💳'} ${acc?.name ?? ''}',
+                                       style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11),
+                                     ),
+                                     if (p.isSplit && p.splits != null && p.splits!.isNotEmpty) ...[
+                                       const SizedBox(height: 4),
+                                       Container(
+                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                         decoration: BoxDecoration(
+                                           color: AppColors.primary.withValues(alpha: 0.15),
+                                           borderRadius: BorderRadius.circular(5),
+                                         ),
+                                         child: Row(
+                                           mainAxisSize: MainAxisSize.min,
+                                           children: [
+                                             const Icon(Icons.call_split_rounded, size: 11, color: AppColors.primary),
+                                             const SizedBox(width: 4),
+                                             Text(
+                                               'Split (${p.splits!.length} friends • ${CurrencyUtil.format(p.splits!.fold(0.0, (s, e) => s + e.amount), acc?.currency ?? 'INR')} share)',
+                                               style: const TextStyle(fontSize: 10, color: AppColors.primary, fontWeight: FontWeight.w600),
+                                             ),
+                                           ],
+                                         ),
+                                       ),
+                                     ],
                                   ],
                                 ),
                               ),
@@ -300,6 +348,8 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
   String _endType = 'never'; // 'never' | 'until_date' | 'occurrences'
   DateTime? _untilDate;
   bool _saving = false;
+  bool _isSplit = false;
+  List<_SplitMemberEntry> _splitEntries = [];
 
   @override
   void initState() {
@@ -315,6 +365,12 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
       _dueDate = p.nextDueDate;
       _endType = p.endType;
       _untilDate = p.untilDate;
+      _isSplit = p.isSplit;
+      if (p.isSplit && p.splits != null && p.splits!.isNotEmpty) {
+        _splitEntries = p.splits!
+            .map((s) => _SplitMemberEntry(id: s.id, name: s.name, amount: s.amount, isPaid: s.isPaid))
+            .toList();
+      }
       if (p.totalOccurrences != null) {
         _occurrencesCtrl.text = p.totalOccurrences.toString();
       }
@@ -341,7 +397,41 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
     _amountCtrl.dispose();
     _noteCtrl.dispose();
     _occurrencesCtrl.dispose();
+    for (final e in _splitEntries) {
+      e.dispose();
+    }
     super.dispose();
+  }
+
+  void _addSplitMember() {
+    setState(() {
+      _splitEntries.add(_SplitMemberEntry(
+        id: _uuid.v4(),
+        name: 'Friend ${_splitEntries.length + 1}',
+        amount: 0,
+      ));
+      _splitEqually();
+    });
+  }
+
+  void _removeSplitMember(int index) {
+    setState(() {
+      _splitEntries[index].dispose();
+      _splitEntries.removeAt(index);
+      if (_splitEntries.isNotEmpty) {
+        _splitEqually();
+      }
+    });
+  }
+
+  void _splitEqually() {
+    final total = double.tryParse(_amountCtrl.text) ?? 0;
+    if (total <= 0 || _splitEntries.isEmpty) return;
+    final count = _splitEntries.length + 1; // You + friends
+    final each = (total / count).roundToDouble();
+    for (final e in _splitEntries) {
+      e.amountCtrl.text = each.toStringAsFixed(0);
+    }
   }
 
   Future<void> _save() async {
@@ -351,6 +441,18 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
         ? int.tryParse(_occurrencesCtrl.text)
         : null;
     final effectiveCategoryId = _selectedSubcategoryId ?? _selectedParentCategoryId;
+
+    List<SplitMember>? splits;
+    if (_isSplit && _splitEntries.isNotEmpty) {
+      splits = _splitEntries
+          .map((e) => SplitMember(
+                id: e.id,
+                name: e.nameCtrl.text.trim().isEmpty ? 'Friend' : e.nameCtrl.text.trim(),
+                amount: double.tryParse(e.amountCtrl.text) ?? 0,
+                isPaid: false,
+              ))
+          .toList();
+    }
 
     setState(() => _saving = true);
 
@@ -367,6 +469,8 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
       p.endType = _isRecurring ? _endType : 'never';
       p.untilDate = _isRecurring && _endType == 'until_date' ? _untilDate : null;
       p.totalOccurrences = totalOcc;
+      p.isSplit = _isSplit;
+      p.splits = splits;
       await widget.ref.read(plannedPaymentsProvider.notifier).update(p);
     } else {
       final p = PlannedPayment(
@@ -384,6 +488,8 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
         totalOccurrences: totalOcc,
         currentOccurrence: 1,
         isCompleted: false,
+        isSplit: _isSplit,
+        splits: splits,
       );
       await widget.ref.read(plannedPaymentsProvider.notifier).add(p);
     }
@@ -399,6 +505,13 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
         ? widget.categories.where((c) => c.parentId == _selectedParentCategoryId).toList()
         : <Category>[];
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final selectedAcc = widget.accounts.firstWhereOrNull((a) => a.id == _accountId);
+    final totalAmount = double.tryParse(_amountCtrl.text) ?? 0;
+    final friendsTotal = _splitEntries.fold<double>(
+        0.0, (s, e) => s + (double.tryParse(e.amountCtrl.text) ?? 0));
+    final myShare = totalAmount - friendsTotal;
+
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
@@ -406,12 +519,6 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(color: AppColors.darkBorder, borderRadius: BorderRadius.circular(2)),
-            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
               child: Row(
@@ -451,12 +558,22 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       initialValue: _accountId,
+                      isExpanded: true,
                       items: widget.accounts
-                          .map((a) => DropdownMenuItem(value: a.id, child: Text('${a.emoji} ${a.name}')))
+                          .map((a) => DropdownMenuItem(
+                                value: a.id,
+                                child: Row(
+                                  children: [
+                                    AccountIcon(account: a, size: 18),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: Text(a.name, overflow: TextOverflow.ellipsis)),
+                                  ],
+                                ),
+                              ))
                           .toList(),
                       onChanged: (v) => setState(() => _accountId = v),
                       decoration: const InputDecoration(labelText: 'Account'),
-                      dropdownColor: AppColors.darkCard,
+                      dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
                     ),
                     // Category & Subcategory Row
                     if (_selectedParentCategoryId != null && subcategories.isNotEmpty) ...[
@@ -467,16 +584,16 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
                             child: DropdownButtonFormField<String?>(
                               key: ValueKey('planned_parent_$_selectedParentCategoryId'),
                               initialValue: _selectedParentCategoryId,
+                              isExpanded: true,
                               items: [
-                                const DropdownMenuItem(value: null, child: Text('None')),
+                                const DropdownMenuItem(value: null, child: Text('None', overflow: TextOverflow.ellipsis)),
                                 ...parentCategories.map((c) => DropdownMenuItem(
                                       value: c.id,
                                       child: Row(
-                                        mainAxisSize: MainAxisSize.min,
                                         children: [
                                           CategoryIcon(category: c, size: 16),
                                           const SizedBox(width: 6),
-                                          Flexible(
+                                          Expanded(
                                             child: Text(c.name,
                                                 style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                                                 overflow: TextOverflow.ellipsis),
@@ -490,7 +607,7 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
                                 _selectedSubcategoryId = null;
                               }),
                               decoration: const InputDecoration(labelText: 'Category'),
-                              dropdownColor: AppColors.darkCard,
+                              dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -498,19 +615,26 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
                             child: DropdownButtonFormField<String?>(
                               key: ValueKey('planned_sub_$_selectedSubcategoryId'),
                               initialValue: _selectedSubcategoryId,
+                              isExpanded: true,
                               items: [
-                                const DropdownMenuItem(
+                                DropdownMenuItem(
                                   value: null,
-                                  child: Text('All / General', style: TextStyle(color: AppColors.darkTextSecondary, fontSize: 13)),
+                                  child: Text(
+                                    'All / General',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                      fontSize: 13,
+                                    ),
+                                  ),
                                 ),
                                 ...subcategories.map((sub) => DropdownMenuItem(
                                       value: sub.id,
                                       child: Row(
-                                        mainAxisSize: MainAxisSize.min,
                                         children: [
                                           CategoryIcon(category: sub, size: 16),
                                           const SizedBox(width: 6),
-                                          Flexible(
+                                          Expanded(
                                             child: Text(sub.name, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
                                           ),
                                         ],
@@ -519,7 +643,7 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
                               ],
                               onChanged: (v) => setState(() => _selectedSubcategoryId = v),
                               decoration: const InputDecoration(labelText: 'Subcategory'),
-                              dropdownColor: AppColors.darkCard,
+                              dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
                             ),
                           ),
                         ],
@@ -529,15 +653,16 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
                       DropdownButtonFormField<String?>(
                         key: ValueKey('planned_parent_$_selectedParentCategoryId'),
                         initialValue: _selectedParentCategoryId,
+                        isExpanded: true,
                         items: [
-                          const DropdownMenuItem(value: null, child: Text('No Category')),
+                          const DropdownMenuItem(value: null, child: Text('No Category', overflow: TextOverflow.ellipsis)),
                           ...parentCategories.map((c) => DropdownMenuItem(
                                 value: c.id,
                                 child: Row(
                                   children: [
                                     CategoryIcon(category: c, size: 18),
                                     const SizedBox(width: 8),
-                                    Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                    Expanded(child: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
                                   ],
                                 ),
                               )),
@@ -547,7 +672,7 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
                           _selectedSubcategoryId = null;
                         }),
                         decoration: const InputDecoration(labelText: 'Category'),
-                        dropdownColor: AppColors.darkCard,
+                        dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -578,21 +703,22 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
                       title: const Text('Recurring Payment'),
                       subtitle: const Text('Repeats automatically across cycles'),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      tileColor: AppColors.darkCardAlt,
+                      tileColor: isDark ? AppColors.darkCardAlt : AppColors.lightBg,
                     ),
                     if (_isRecurring) ...[
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
                         initialValue: _period,
+                        isExpanded: true,
                         items: ['daily', 'weekly', 'monthly', 'yearly']
                             .map((p) => DropdownMenuItem(
                                   value: p,
                                   child: Text(p[0].toUpperCase() + p.substring(1)),
-                                ))
+                                ),)
                             .toList(),
                         onChanged: (v) => setState(() => _period = v ?? 'monthly'),
                         decoration: const InputDecoration(labelText: 'Frequency / Cycle'),
-                        dropdownColor: AppColors.darkCard,
+                        dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
                       ),
                       const SizedBox(height: 16),
 
@@ -601,9 +727,9 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: AppColors.darkCardAlt,
+                          color: isDark ? AppColors.darkCardAlt : AppColors.lightBg,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: AppColors.darkBorder),
+                          border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -688,6 +814,179 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
                         ),
                       ),
                     ],
+                    const SizedBox(height: 12),
+                    // Split Bill Section
+                    Container(
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.darkCardAlt : AppColors.lightBg,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                      ),
+                      child: Column(
+                        children: [
+                          SwitchListTile(
+                            title: const Text('Split with Friends', style: TextStyle(fontWeight: FontWeight.w600)),
+                            subtitle: Text(
+                              _isSplit
+                                  ? 'Splitting payment with ${_splitEntries.length} friends'
+                                  : 'Split subscriptions, rent, or recurring bills',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                              ),
+                            ),
+                            value: _isSplit,
+                            activeTrackColor: AppColors.primary,
+                            onChanged: (val) {
+                              setState(() {
+                                _isSplit = val;
+                                if (val && _splitEntries.isEmpty) {
+                                  _splitEntries.add(_SplitMemberEntry(id: _uuid.v4(), name: 'Friend 1', amount: 0));
+                                  _splitEqually();
+                                }
+                              });
+                            },
+                          ),
+                          if (_isSplit) ...[
+                            const Divider(height: 1),
+                            Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                children: [
+                                  // Summary calculation banner
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: isDark ? AppColors.darkCard : AppColors.lightCard,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text('Friends Owe You',
+                                                style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)),
+                                            Text(
+                                              '${CurrencyUtil.symbol(selectedAcc?.currency ?? 'INR')} ${friendsTotal.toStringAsFixed(0)}',
+                                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.income),
+                                            ),
+                                          ],
+                                        ),
+                                        Container(width: 1, height: 26, color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.end,
+                                          children: [
+                                            Text('Your Net Share',
+                                                style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)),
+                                            Text(
+                                              '${CurrencyUtil.symbol(selectedAcc?.currency ?? 'INR')} ${myShare.toStringAsFixed(0)}',
+                                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.primary),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+
+                                  // Quick "Split Equally" Action
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Friends (${_splitEntries.length})',
+                                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                      ),
+                                      const Spacer(),
+                                      InkWell(
+                                        onTap: _splitEqually,
+                                        borderRadius: BorderRadius.circular(6),
+                                        child: const Padding(
+                                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.auto_fix_high_rounded, size: 14, color: AppColors.primary),
+                                              SizedBox(width: 4),
+                                              Text('Split Equally',
+                                                  style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: AppColors.primary,
+                                                      fontWeight: FontWeight.w600)),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+
+                                  // Friends rows
+                                  ..._splitEntries.asMap().entries.map((entry) {
+                                    final i = entry.key;
+                                    final item = entry.value;
+                                    return Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            flex: 3,
+                                            child: TextField(
+                                              controller: item.nameCtrl,
+                                              decoration: const InputDecoration(
+                                                isDense: true,
+                                                hintText: 'Friend Name',
+                                                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                                prefixIcon: Icon(Icons.person_outline_rounded, size: 18),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            flex: 2,
+                                            child: TextField(
+                                              controller: item.amountCtrl,
+                                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))],
+                                              onChanged: (_) => setState(() {}),
+                                              decoration: InputDecoration(
+                                                isDense: true,
+                                                prefixText: '${CurrencyUtil.symbol(selectedAcc?.currency ?? 'INR')} ',
+                                                hintText: '0',
+                                                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                              ),
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.darkTextMuted),
+                                            onPressed: () => _removeSplitMember(i),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }),
+
+                                  // Add friend button
+                                  OutlinedButton.icon(
+                                    onPressed: _addSplitMember,
+                                    icon: const Icon(Icons.add_rounded, size: 16),
+                                    label: const Text('Add Friend', style: TextStyle(fontSize: 12)),
+                                    style: OutlinedButton.styleFrom(
+                                      visualDensity: VisualDensity.compact,
+                                      side: const BorderSide(color: AppColors.primary),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _noteCtrl,

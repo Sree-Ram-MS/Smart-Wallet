@@ -31,6 +31,40 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
   String? _statusMsg;
   bool _isError = false;
 
+  void _notify(String msg, {bool isError = false}) {
+    if (!mounted) return;
+    setState(() {
+      _statusMsg = msg;
+      _isError = isError;
+    });
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: isError ? AppColors.expense : AppColors.income,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                msg,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
   String? get _lastCloudBackupTime {
     try {
       final raw = HiveService.settingsBox.get('last_cloud_backup_time');
@@ -62,55 +96,51 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
     final shouldBackup = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1E1E24),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(24, 16, 24, MediaQuery.of(ctx).viewInsets.bottom + 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+        builder: (ctx, setSheetState) {
+          final isDark = Theme.of(ctx).brightness == Brightness.dark;
+          return Padding(
+            padding: EdgeInsets.fromLTRB(24, 16, 24, MediaQuery.of(ctx).viewInsets.bottom + 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.add_to_drive_rounded, color: AppColors.primary, size: 24),
+                    SizedBox(width: 10),
+                    Text(
+                      'Backup to Google Drive',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 16),
-              const Row(
-                children: [
-                  Icon(Icons.add_to_drive_rounded, color: AppColors.primary, size: 24),
-                  SizedBox(width: 10),
-                  Text(
-                    'Backup to Google Drive',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Uploads your complete encrypted database directly into your personal Google Drive (AppData folder). Zero server needed, completely private and accessible on any device with your Google account.',
-                style: TextStyle(fontSize: 12.5, color: AppColors.darkTextSecondary, height: 1.35),
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 8),
+                const Text(
+                  'Uploads your complete encrypted database directly into your personal Google Drive (AppData folder). Zero server needed, completely private and accessible on any device with your Google account.',
+                  style: TextStyle(fontSize: 12.5, height: 1.35),
+                ),
+                const SizedBox(height: 16),
 
-              // Password Protection Toggle
-              Material(
-                color: AppColors.darkCardAlt,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: const BorderSide(color: Colors.white12),
+                // Password Protection Toggle
+                Material(
+                  color: isDark ? AppColors.darkCardAlt : AppColors.lightBg,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    side: BorderSide(color: isDark ? Colors.white12 : AppColors.lightBorder),
+                  ),
+                  child: SwitchListTile(
+                    title: const Text('Password Protect / Encrypt', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    subtitle: Text(
+                      'Encrypts data with AES & PBKDF2 key derivation',
+                      style: TextStyle(fontSize: 11, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                    ),
+                    secondary: const Icon(Icons.lock_outline_rounded, color: AppColors.accent),
+                    value: usePassword,
+                    onChanged: (v) => setSheetState(() => usePassword = v),
+                  ),
                 ),
-                child: SwitchListTile(
-                  title: const Text('Password Protect / Encrypt', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                  subtitle: const Text('Encrypts data with AES & PBKDF2 key derivation', style: TextStyle(fontSize: 11)),
-                  secondary: const Icon(Icons.lock_outline_rounded, color: AppColors.accent),
-                  value: usePassword,
-                  onChanged: (v) => setSheetState(() => usePassword = v),
-                ),
-              ),
 
               if (usePassword) ...[
                 const SizedBox(height: 12),
@@ -145,9 +175,10 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
               ),
             ],
           ),
-        ),
-      ),
-    );
+        );
+      },
+    ),
+  );
 
     if (shouldBackup == true) {
       setState(() {
@@ -158,19 +189,9 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
       try {
         final password = usePassword ? passwordCtrl.text.trim() : null;
         await GoogleDriveBackupService.uploadBackupToGoogleDrive(password: password);
-        if (mounted) {
-          setState(() {
-            _statusMsg = 'Database successfully backed up to your Google Drive!';
-            _isError = false;
-          });
-        }
+        _notify('Database successfully backed up to your Google Drive!');
       } catch (e) {
-        if (mounted) {
-          setState(() {
-            _statusMsg = e.toString();
-            _isError = true;
-          });
-        }
+        _notify('Backup failed: $e', isError: true);
       } finally {
         if (mounted) setState(() => _driveBackupLoading = false);
       }
@@ -249,22 +270,10 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
       if (proceed != null) {
         await BackupService.restoreDatabase(preview.rawData, replaceAll: proceed);
         refreshAllData(ref);
-
-        if (mounted) {
-          setState(() {
-            _statusMsg =
-                'Restored from Google Drive! (${preview?.transactionsCount} transactions, ${preview?.accountsCount} accounts)';
-            _isError = false;
-          });
-        }
+        _notify('Restored from Google Drive! (${preview.transactionsCount} transactions, ${preview.accountsCount} accounts)');
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _statusMsg = e.toString();
-          _isError = true;
-        });
-      }
+      _notify('Restore failed: $e', isError: true);
     } finally {
       if (mounted) setState(() => _driveRestoreLoading = false);
     }
@@ -275,57 +284,92 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
   Future<void> _handleLocalBackup() async {
     final passwordCtrl = TextEditingController();
     bool usePassword = false;
+    String selectedFormat = 'smartwallet';
 
     final shouldBackup = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1E1E24),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(24, 16, 24, MediaQuery.of(ctx).viewInsets.bottom + 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+        builder: (ctx, setSheetState) {
+          final isDark = Theme.of(ctx).brightness == Brightness.dark;
+          final isJson = selectedFormat == 'json';
+          return Padding(
+            padding: EdgeInsets.fromLTRB(24, 16, 24, MediaQuery.of(ctx).viewInsets.bottom + 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.file_download_rounded, color: AppColors.income, size: 24),
+                    const SizedBox(width: 10),
+                    Text(
+                      isJson ? 'Export .json File' : 'Export .smartwallet File',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 16),
-              const Row(
-                children: [
-                  Icon(Icons.file_download_rounded, color: AppColors.income, size: 24),
-                  SizedBox(width: 10),
-                  Text(
-                    'Export .smartwallet File',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                const SizedBox(height: 8),
+                Text(
+                  isJson
+                      ? 'Creates a universal .json file containing accounts, categories, transactions, planned payments, and debts.'
+                      : 'Creates a portable .smartwallet file to share via email, save to files, or transfer via USB.',
+                  style: const TextStyle(fontSize: 12.5),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Backup Format',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12.5,
+                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
                   ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Creates a portable .smartwallet file to share via email, save to files, or transfer via USB.',
-                style: TextStyle(fontSize: 12.5, color: AppColors.darkTextSecondary),
-              ),
-              const SizedBox(height: 16),
-              Material(
-                color: AppColors.darkCardAlt,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: const BorderSide(color: Colors.white12),
                 ),
-                child: SwitchListTile(
-                  title: const Text('Password Protect / Encrypt', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                  subtitle: const Text('Encrypts data with AES & PBKDF2', style: TextStyle(fontSize: 11)),
-                  secondary: const Icon(Icons.lock_outline_rounded, color: AppColors.accent),
-                  value: usePassword,
-                  onChanged: (v) => setSheetState(() => usePassword = v),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ChoiceChip(
+                        avatar: const Icon(Icons.shield_outlined, size: 16),
+                        label: const Center(child: Text('.smartwallet')),
+                        selected: selectedFormat == 'smartwallet',
+                        onSelected: (val) {
+                          if (val) setSheetState(() => selectedFormat = 'smartwallet');
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ChoiceChip(
+                        avatar: const Icon(Icons.data_object_rounded, size: 16),
+                        label: const Center(child: Text('.json')),
+                        selected: selectedFormat == 'json',
+                        onSelected: (val) {
+                          if (val) setSheetState(() => selectedFormat = 'json');
+                        },
+                      ),
+                    ),
+                  ],
                 ),
-              ),
+                const SizedBox(height: 16),
+                Material(
+                  color: isDark ? AppColors.darkCardAlt : AppColors.lightBg,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    side: BorderSide(color: isDark ? Colors.white12 : AppColors.lightBorder),
+                  ),
+                  child: SwitchListTile(
+                    title: const Text('Password Protect / Encrypt', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    subtitle: Text(
+                      'Encrypts data with AES & PBKDF2',
+                      style: TextStyle(fontSize: 11, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                    ),
+                    secondary: const Icon(Icons.lock_outline_rounded, color: AppColors.accent),
+                    value: usePassword,
+                    onChanged: (v) => setSheetState(() => usePassword = v),
+                  ),
+                ),
               if (usePassword) ...[
                 const SizedBox(height: 12),
                 TextField(
@@ -340,15 +384,16 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
                 height: 50,
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.share_rounded),
-                  label: const Text('Export & Share File', style: TextStyle(fontWeight: FontWeight.bold)),
+                  label: Text('Export & Share ($selectedFormat)', style: const TextStyle(fontWeight: FontWeight.bold)),
                   onPressed: () => Navigator.pop(ctx, true),
                 ),
               ),
             ],
           ),
-        ),
-      ),
-    );
+        );
+      },
+    ),
+  );
 
     if (shouldBackup == true) {
       setState(() {
@@ -357,10 +402,10 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
       });
       try {
         final password = usePassword ? passwordCtrl.text.trim() : null;
-        await BackupService.shareBackup(password: password);
-        if (mounted) setState(() => _statusMsg = 'Backup file exported successfully!');
+        await BackupService.shareBackup(password: password, format: selectedFormat);
+        _notify('.$selectedFormat backup file exported successfully!');
       } catch (e) {
-        if (mounted) setState(() => _statusMsg = 'Export failed: $e');
+        _notify('Export failed: $e', isError: true);
       } finally {
         if (mounted) setState(() => _localBackupLoading = false);
       }
@@ -416,22 +461,10 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
       if (proceed != null) {
         await BackupService.restoreDatabase(preview.rawData, replaceAll: proceed);
         refreshAllData(ref);
-
-        if (mounted) {
-          setState(() {
-            _statusMsg =
-                'Restored successfully! (${preview.transactionsCount} transactions, ${preview.accountsCount} accounts)';
-            _isError = false;
-          });
-        }
+        _notify('Restored successfully! (${preview.transactionsCount} transactions, ${preview.accountsCount} accounts)');
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _statusMsg = 'Restore failed: $e';
-          _isError = true;
-        });
-      }
+      _notify('Restore failed: $e', isError: true);
     } finally {
       if (mounted) setState(() => _localRestoreLoading = false);
     }
@@ -442,156 +475,150 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1E1E24),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (bCtx) => StatefulBuilder(
-        builder: (bCtx, setModalState) => Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Row(
-                children: [
-                  Icon(Icons.restore_page_rounded, color: AppColors.income, size: 24),
-                  SizedBox(width: 10),
-                  Text(
-                    'Restore Preview',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Created on ${DateUtil.formatDateTime(preview.createdAt)} (${preview.userName} • Base: ${preview.currency})',
-                style: const TextStyle(fontSize: 12, color: AppColors.darkTextSecondary),
-              ),
-              const SizedBox(height: 16),
-
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.darkCardAlt,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white10),
-                ),
-                child: Column(
+        builder: (bCtx, setModalState) {
+          final isDark = Theme.of(bCtx).brightness == Brightness.dark;
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _PreviewMetric(label: 'Accounts', value: '${preview.accountsCount}', icon: '💳'),
-                        _PreviewMetric(label: 'Categories', value: '${preview.categoriesCount}', icon: '🏷️'),
-                        _PreviewMetric(label: 'Transactions', value: '${preview.transactionsCount}', icon: '📜'),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _PreviewMetric(label: 'Planned', value: '${preview.plannedCount}', icon: '📅'),
-                        _PreviewMetric(label: 'Debts/Credits', value: '${preview.debtsCount}', icon: '🤝'),
-                        _PreviewMetric(label: 'Templates', value: '${preview.templatesCount}', icon: '⚡'),
-                      ],
+                    Icon(Icons.restore_page_rounded, color: AppColors.income, size: 24),
+                    SizedBox(width: 10),
+                    Text(
+                      'Restore Preview',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 18),
+                const SizedBox(height: 4),
+                Text(
+                  'Created on ${DateUtil.formatDateTime(preview.createdAt)} (${preview.userName} • Base: ${preview.currency})',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                const SizedBox(height: 16),
 
-              const Text('Restore Option', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
-              const SizedBox(height: 8),
-              InkWell(
-                onTap: () => setModalState(() => replaceAll = true),
-                borderRadius: BorderRadius.circular(14),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
+                Container(
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: replaceAll ? AppColors.primary.withValues(alpha: 0.15) : AppColors.darkCardAlt,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: replaceAll ? AppColors.primary : Colors.white10),
+                    color: isDark ? AppColors.darkCardAlt : AppColors.lightBg,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: isDark ? Colors.white10 : AppColors.lightBorder),
                   ),
-                  child: Row(
+                  child: Column(
                     children: [
-                      Icon(
-                        replaceAll ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
-                        color: replaceAll ? AppColors.primary : Colors.white54,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _PreviewMetric(label: 'Accounts', value: '${preview.accountsCount}', icon: '💳'),
+                          _PreviewMetric(label: 'Categories', value: '${preview.categoriesCount}', icon: '🏷️'),
+                          _PreviewMetric(label: 'Transactions', value: '${preview.transactionsCount}', icon: '📜'),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Replace Everything (Recommended)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
-                            SizedBox(height: 2),
-                            Text('Replaces current local data with the backup snapshot. Ideal for switching phones.',
-                                style: TextStyle(fontSize: 11, color: AppColors.darkTextSecondary)),
-                          ],
-                        ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _PreviewMetric(label: 'Planned', value: '${preview.plannedCount}', icon: '📅'),
+                          _PreviewMetric(label: 'Debts/Credits', value: '${preview.debtsCount}', icon: '🤝'),
+                          _PreviewMetric(label: 'Templates', value: '${preview.templatesCount}', icon: '⚡'),
+                        ],
                       ),
                     ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              InkWell(
-                onTap: () => setModalState(() => replaceAll = false),
-                borderRadius: BorderRadius.circular(14),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: !replaceAll ? AppColors.primary.withValues(alpha: 0.15) : AppColors.darkCardAlt,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: !replaceAll ? AppColors.primary : Colors.white10),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        !replaceAll ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
-                        color: !replaceAll ? AppColors.primary : Colors.white54,
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Merge into Existing Data', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
-                            SizedBox(height: 2),
-                            Text('Appends items from the backup without deleting existing accounts or transactions.',
-                                style: TextStyle(fontSize: 11, color: AppColors.darkTextSecondary)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 18),
 
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.income,
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                Text('Restore Option', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDark ? Colors.white : AppColors.lightText)),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () => setModalState(() => replaceAll = true),
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: replaceAll ? AppColors.primary.withValues(alpha: 0.15) : (isDark ? AppColors.darkCardAlt : AppColors.lightBg),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: replaceAll ? AppColors.primary : (isDark ? Colors.white10 : AppColors.lightBorder)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          replaceAll ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+                          color: replaceAll ? AppColors.primary : (isDark ? Colors.white54 : AppColors.lightTextMuted),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Replace Everything (Recommended)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+                              const SizedBox(height: 2),
+                              Text('Replaces current local data with the backup snapshot. Ideal for switching phones.',
+                                  style: TextStyle(fontSize: 11, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  onPressed: () => Navigator.pop(bCtx, replaceAll),
-                  child: const Text('Restore Database Now', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                 ),
-              ),
-            ],
-          ),
-        ),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () => setModalState(() => replaceAll = false),
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: !replaceAll ? AppColors.primary.withValues(alpha: 0.15) : (isDark ? AppColors.darkCardAlt : AppColors.lightBg),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: !replaceAll ? AppColors.primary : (isDark ? Colors.white10 : AppColors.lightBorder)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          !replaceAll ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+                          color: !replaceAll ? AppColors.primary : (isDark ? Colors.white54 : AppColors.lightTextMuted),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Merge into Existing Data', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+                              const SizedBox(height: 2),
+                              Text('Appends items from the backup without deleting existing accounts or transactions.',
+                                  style: TextStyle(fontSize: 11, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.income,
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    onPressed: () => Navigator.pop(bCtx, replaceAll),
+                    child: const Text('Restore Database Now', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -640,9 +667,9 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
           text: 'Smart Wallet CSV Export',
         ),
       );
-      if (mounted) setState(() => _statusMsg = 'Exported ${transactions.length} transactions to CSV!');
+      _notify('Exported ${transactions.length} transactions to CSV!');
     } catch (e) {
-      if (mounted) setState(() => _statusMsg = 'Export failed: $e');
+      _notify('Export failed: $e', isError: true);
     } finally {
       if (mounted) setState(() => _csvExportLoading = false);
     }
@@ -720,9 +747,9 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
         } catch (_) {}
       }
 
-      if (mounted) setState(() => _statusMsg = 'Imported $imported transactions from CSV!');
+      _notify('Imported $imported transactions from CSV!');
     } catch (e) {
-      if (mounted) setState(() => _statusMsg = 'CSV Import failed: $e');
+      _notify('CSV Import failed: $e', isError: true);
     } finally {
       if (mounted) setState(() => _csvImportLoading = false);
     }
@@ -761,7 +788,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
                 gradient: LinearGradient(
                   colors: [
                     AppColors.primary.withValues(alpha: 0.22),
-                    const Color(0xFF1E1E28),
+                    Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E28) : AppColors.lightCard,
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -784,9 +811,9 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Google Drive Serverless Sync',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white),
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 3),
                         Text(
@@ -795,7 +822,11 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
                               : (localTime != null ? 'Local backup: $localTime' : 'No cloud backup yet'),
                           style: TextStyle(
                             fontSize: 12,
-                            color: cloudTime != null ? AppColors.income : AppColors.darkTextSecondary,
+                            color: cloudTime != null
+                                ? AppColors.income
+                                : (Theme.of(context).brightness == Brightness.dark
+                                    ? AppColors.darkTextSecondary
+                                    : AppColors.lightTextSecondary),
                             fontWeight: cloudTime != null ? FontWeight.w600 : FontWeight.normal,
                           ),
                         ),
@@ -944,7 +975,7 @@ class _SectionHeader extends StatelessWidget {
       children: [
         Icon(icon, size: 18, color: AppColors.primary),
         const SizedBox(width: 8),
-        Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+        Text(title, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
       ],
     );
   }
@@ -958,12 +989,13 @@ class _PreviewMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         Text(icon, style: const TextStyle(fontSize: 18)),
         const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
-        Text(label, style: const TextStyle(fontSize: 10.5, color: AppColors.darkTextSecondary)),
+        Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : AppColors.lightText)),
+        Text(label, style: TextStyle(fontSize: 10.5, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)),
       ],
     );
   }
