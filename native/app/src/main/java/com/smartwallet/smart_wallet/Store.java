@@ -83,6 +83,10 @@ public final class Store {
             out.write(text.getBytes(StandardCharsets.UTF_8));
             out.close();
             db = toSave;
+            // Phase 5: keep the home-screen widget's balance fresh,
+            // like Flutter's providers did (no-op when no widget is
+            // placed; refreshAll swallows its own errors).
+            QuickAddWidgetProvider.refreshAll(ctx);
         } catch (Exception ignored) {
             // Phase 1 is read-only in practice; a failed save must not crash the UI.
         }

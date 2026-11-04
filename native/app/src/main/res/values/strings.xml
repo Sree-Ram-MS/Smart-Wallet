@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_name">Smart Wallet Quick Add</string>
+    <string name="widget_description">Quickly add transactions and view your net wallet balance from home screen.</string>
+    <!-- Web (type 3) OAuth client of Firebase project smart-wallet-by-ram;
+         Google Sign-In reads this as its default web client id. -->
+    <string name="default_web_client_id">720304451502-ih61sa67e59lt1040t1c3pl125lj3nj0.apps.googleusercontent.com</string>
+</resources>

@@ -77,16 +77,34 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().setStatusBarColor(BG);
-        getWindow().setNavigationBarColor(BG);
-
+        // Phase 5 session gate (Flutter router parity), applied
+        // before any UI: no session -> Login; session + biometric
+        // lock on -> Lock; else the dashboard below.
         store = new Store(this);
         db = store.db();
+        boolean signedIn = AppPrefs.signedIn(this) && db.user != null;
+        SessionGate.Route route = SessionGate.decide(signedIn,
+                db.user != null && db.user.biometricEnabled,
+                android.os.Build.VERSION.SDK_INT, BiometricGate.available(this));
+        if (route == SessionGate.Route.LOGIN) {
+            startActivity(new Intent(this, LoginActivity.class));
+            finish();
+            return;
+        }
+        if (route == SessionGate.Route.BIOMETRIC && !AppLock.unlockedThisSession) {
+            startActivity(new Intent(this, LockActivity.class));
+            finish();
+            return;
+        }
+
+        getWindow().setStatusBarColor(BG);
+        getWindow().setNavigationBarColor(BG);
 
         // Phase 3: reminders — ask for the Android 13+ notification
         // permission and (re)schedule all alarms on app start.
         NotifService.requestPermission(this);
         NotifService.sync(this);
+        handleDeepLink(getIntent());
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -123,6 +141,34 @@ public class MainActivity extends Activity {
         root.addView(buildBottomNav());
         setContentView(root);
         showDashboard();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleDeepLink(intent);
+    }
+
+    /**
+     * Widget deep links (Flutter main.dart handler parity):
+     * smartwallet://quick-add?type=income|expense|split opens the
+     * editor prefilled (split editor open for "split");
+     * smartwallet://open-dashboard just lands here.
+     */
+    private void handleDeepLink(Intent intent) {
+        if (intent == null) return;
+        android.net.Uri data = intent.getData();
+        if (data == null || !"smartwallet".equals(data.getScheme())) return;
+        if (!"quick-add".equals(data.getHost())) return; // open-dashboard: nothing to do
+        String type = data.getQueryParameter("type");
+        Intent edit = new Intent(this, TxEditActivity.class);
+        if ("split".equals(type)) {
+            edit.putExtra(TxEditActivity.EXTRA_START_SPLIT, true);
+        } else if (type != null) {
+            edit.putExtra("preset_type", type);
+        }
+        startActivity(edit);
     }
 
     @Override

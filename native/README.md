@@ -2,14 +2,17 @@
 
 A from-scratch **native Java** rebuild of Ram's Flutter Smart Wallet
 (repo `Sree-Ram-MS/Smart-Wallet`, v1.1.0+2, ~30 MB APK), built for one
-reason: lightness. Pure Android framework APIs — **no external libraries,
-no Gradle** — using the same aapt2 + javac + d8 + apksigner pipeline as
-the Her Cycle app.
+reason: lightness. Hand-written Android framework code — **no Gradle** —
+using the same aapt2 + javac + d8 + apksigner pipeline as the Her Cycle
+app. Phases 1–4 used zero libraries; Phase 5 vendors exactly one SDK
+(Google Sign-In / Play Services Auth, downloaded as AARs — see Build).
 
 - Package: `com.smartwallet.smart_wallet` (same as the Flutter app)
 - Phase 1 build: SmartWallet-Native-v0.1.apk — 29,251 bytes (≈ 0.1% of the Flutter APK)
-- Phase 2 build: **SmartWallet-Native-v0.2.apk — 49,731 bytes**, versionCode 4 / `2.0.0-preview2`
-- minSdk 26 · targetSdk 34 · **zero permissions**
+- Phase 2 build: SmartWallet-Native-v0.2.apk — 49,731 bytes, versionCode 4 / `2.0.0-preview2`
+- Phase 4 build: SmartWallet-Native-v0.4.apk — 103,049 bytes, still zero libraries
+- Phase 5 build: **SmartWallet-Native-v0.5.apk — 2,487,469 bytes**, versionCode 7 / `2.0.0-preview5` (the jump is the Play Services SDK; still ~8% of the Flutter APK)
+- minSdk 26 · targetSdk 34 · permissions: notifications trio + INTERNET + USE_BIOMETRIC (Phase 5)
 
 ## Phase 1 — what is in it
 
@@ -196,6 +199,60 @@ Flutter sources; see `PHASE3-REPORT.md` for the semantics decisions):
   ₹1,75,850), CSV round-trips, and malformed-file rejection with
   the live DB untouched. Details in `PHASE4-REPORT.md`.
 
+## Phase 5 — what is in it
+
+Identity, cloud backup, lock and widget — the last Flutter features:
+
+- **Login screen / session gate** (`LoginActivity`, the LAUNCHER):
+  gradient wallet tile, "Smart Wallet", "Your personal finance
+  companion", feature rows (💳 Multiple Accounts, 📊 Spending
+  Charts, 🔒 Biometric Lock), white **Continue with Google**,
+  outlined **Continue as Guest**, footer "All data stored locally on
+  your device". Gate = `SessionGate` (pure, unit-tested): no session
+  → Login; session + biometric on → Lock; else Dashboard. Because
+  the seed data ships with a demo profile, "signed in" is an
+  explicit flag in app preferences (not part of the backup file —
+  the same split as Flutter's settings box), set by sign-in and
+  cleared by sign-out.
+- **Google Sign-In** (`AuthService`) on the vendored Play Services
+  Auth SDK (see Build, below): scopes email + profile +
+  drive.appdata + drive.file; profile mapping identical to Flutter
+  (name falls back to the email prefix, INR, dark, biometric off).
+  **Guest** is Flutter's guest verbatim (`guest_001`). **Link Google
+  Account** (Settings, or the Drive card) replaces only the identity
+  fields — data, currency, biometric and theme are kept. **Sign Out**
+  (Settings / lock screen) revokes + signs out and clears only the
+  stored user + session: wallet data remains, exactly like Flutter's
+  `clearUser()`.
+- **Google Drive backup** (Import/Export → ☁️ Google Drive Backup):
+  the same `.smartwallet` file (optional password, same dialog as
+  local export) in Drive **appDataFolder** as
+  `smart_wallet_backup.smartwallet`, via Drive v3 REST
+  (`DriveBackupService` + pure `DriveCodec`). Shows the account, the
+  cloud backup's modified time/size, and the persisted
+  `last_cloud_backup_time`. Restore downloads and runs the **same**
+  Phase 4 preview + confirm + undo flow as a local file. A 401/403
+  clears the token and retries once, like Flutter's client.
+- **Biometric lock**: framework `BiometricPrompt` only
+  (`BiometricGate`, API 28+; 26–27 report unavailable — no
+  androidx.biometric). Lock screen auto-prompts, offers the device
+  PIN/password (built into the prompt on API 30+, a keyguard button
+  on 28–29), retry, and Sign Out. If biometrics can't run (no
+  hardware/enrolment) the user is let in with a notice — never
+  locked out. Settings → Security toggles it; enabling requires a
+  successful prompt first.
+- **Quick Add widget** (`QuickAddWidgetProvider`): port of the
+  Flutter widget — net balance (Flutter's exact format: symbol +
+  2 decimals, no grouping) computed from the Store file, and
+  Income / Expense / Split buttons deep-linking
+  `smartwallet://quick-add?type=…` into the prefilled editor (split
+  opens the split editor); body tap opens the dashboard. Refreshed
+  from `Store.save()` on every data change plus the standard
+  30-minute period.
+
+Permissions are now exactly five: the Phase 3 trio plus
+`INTERNET` (Sign-In/Drive) and `USE_BIOMETRIC` (the lock).
+
 ## Data-format compatibility
 
 The on-disk format **is** the Flutter backup format, unchanged:
@@ -216,9 +273,21 @@ including Flutter's password-encrypted variant).
 ## Build
 
 ```bash
-./build-apk.sh        # -> SmartWallet-Native-v0.4.apk (debug-signed)
-./build-apk.sh test   # JVM tests (310 checks: WalletLogic + Phase 4 codecs)
+./fetch-libs.sh       # ONE TIME: vendor the Google Sign-In SDK into libs/
+./build-apk.sh        # -> SmartWallet-Native-v0.5.apk (debug-signed)
+./build-apk.sh test   # JVM tests (351 checks: WalletLogic + Phase 4 + Phase 5)
 ```
+
+**Phase 5 library step:** the app stays Gradle-free, so
+`fetch-libs.sh` downloads the AARs/JARs that Flutter's
+google_sign_in_android 6.2.1 resolves (play-services-auth 21.2.0 +
+its POM dependency tree, version-conflict-resolved) from Google
+Maven / Maven Central, extracts them into `libs/x/`, and flattens
+each `classes.jar` into `libs/jars/`. `build-apk.sh` then compiles
+the libraries' resources with aapt2 (linking with `--extra-packages`
+so library R classes exist), compiles against the jars, and dexes
+everything with d8. `libs/` is build input, not source — it is not
+committed to GitHub; re-run `fetch-libs.sh` after a fresh clone.
 
 Toolchain: JDK 17 and Android SDK platform 34 + build-tools 34.0.0.
 The script defaults to the copies at `~/workspace/period-tracker/tools/`
@@ -242,5 +311,5 @@ earlier ones).
 - **Phase 2 (done):** transactions CRUD; accounts & categories management; split transactions read-only (see above).
 - **Phase 3 (done):** planned payments + notifications; debts & credits, split bills + split editing, templates; minimal reminders Settings.
 - **Phase 4 (done):** backup import/export incl. password-encrypted `.smartwallet` files (byte-compatible with Flutter both ways); CSV import/export in Flutter's exact format; restore preview + safety snapshot with undo.
-- **Phase 5:** Google Sign-In + Drive AppData backup; biometric lock; home-screen Quick Add widget.
+- **Phase 5 (done):** Google Sign-In + Drive AppData backup; biometric lock; home-screen Quick Add widget; Login screen / session gate. (Sign-In activates once Ram registers the signing SHA-1 in Firebase — see `PHASE5-REPORT.md`.)
 - **Phase 6:** polish, charts, extra features.

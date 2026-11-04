@@ -40,12 +40,21 @@ public class ImportExportActivity extends Activity {
     private static final int REQ_OPEN_BACKUP = 4102;
     private static final int REQ_CREATE_CSV = 4103;
     private static final int REQ_OPEN_CSV = 4104;
+    private static final int REQ_DRIVE_RECOVERY = 4105;
 
     private Store store;
     private WalletDb db;
     private LinearLayout body;
     private TextView status;
     private TextView undoButton;
+
+    // Phase 5: Google Drive section state.
+    private DriveBackupService drive;
+    private TextView driveInfo;
+    private android.widget.Button driveBackupBtn;
+    private android.widget.Button driveRestoreBtn;
+    private boolean driveBusy;
+    private Intent pendingRecoveryIntent;
 
     private String pendingBackupContent;
     private String pendingCsvContent;
@@ -151,6 +160,9 @@ public class ImportExportActivity extends Activity {
         csv.addView(csvImportBtn);
         body.addView(csv);
 
+        // ---- Google Drive card (Phase 5) ----
+        body.addView(buildDriveCard());
+
         status = Ui.tv(this, "", 13, Ui.SECONDARY, false);
         status.setLayoutParams(Ui.lpTop(this, 16));
         body.addView(status);
@@ -192,6 +204,19 @@ public class ImportExportActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        // Phase 5 results carry no content URI — handle them first.
+        if (requestCode == AuthService.RC_SIGN_IN) {
+            handleLinkResult(data);
+            return;
+        }
+        if (requestCode == REQ_DRIVE_RECOVERY) {
+            pendingRecoveryIntent = null;
+            if (resultCode == RESULT_OK) {
+                toast("Drive permission granted — tap the Drive action again.");
+                render();
+            }
+            return;
+        }
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
         try {
@@ -234,6 +259,297 @@ public class ImportExportActivity extends Activity {
         while ((n = in.read(chunk)) != -1) buf.write(chunk, 0, n);
         in.close();
         return new String(buf.toByteArray(), StandardCharsets.UTF_8);
+    }
+
+    // ------------------------------------------------- Google Drive (Phase 5)
+
+    private LinearLayout buildDriveCard() {
+        if (drive == null) {
+            drive = new DriveBackupService(this,
+                    DriveBackupService.authServiceProvider(this));
+        }
+        LinearLayout card = Ui.card(this, Ui.CARD);
+        card.setLayoutParams(Ui.lpTop(this, 14));
+        card.addView(Ui.tv(this, "☁️  Google Drive Backup", 16, Ui.TEXT, true));
+        TextView desc = Ui.tv(this, "Back up the same .smartwallet file to "
+                + "your Google Drive app folder — only this app can see it. "
+                + "Restoring uses the same preview + undo safety as a local "
+                + "file.", 12, Ui.SECONDARY, false);
+        desc.setLayoutParams(Ui.lpTop(this, 6));
+        card.addView(desc);
+
+        UserProfile user = store.db().user;
+        boolean googleUser = user != null && !user.isGuest();
+        if (!googleUser) {
+            TextView need = Ui.tv(this, user == null
+                    ? "Sign in with Google to use Drive backup."
+                    : "Drive backup needs a Google account — you are a guest.",
+                    12, Ui.EXPENSE, false);
+            need.setLayoutParams(Ui.lpTop(this, 10));
+            card.addView(need);
+            if (user != null) {
+                TextView link = Ui.primaryButton(this, "Link Google Account", Ui.PRIMARY);
+                link.setLayoutParams(Ui.lpTop(this, 10));
+                link.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) {
+                        startActivityForResult(AuthService.signInIntent(
+                                ImportExportActivity.this), AuthService.RC_SIGN_IN);
+                    }
+                });
+                card.addView(link);
+            }
+            return card;
+        }
+
+        TextView account = Ui.tv(this, "Account: " + user.email, 12, Ui.SECONDARY, false);
+        account.setLayoutParams(Ui.lpTop(this, 8));
+        card.addView(account);
+
+        String last = AppPrefs.lastCloudBackup(this);
+        TextView lastTv = Ui.tv(this, last == null
+                ? "Last cloud backup (from this device): never"
+                : "Last cloud backup (from this device): " + CsvCodec.formatCsvDate(last),
+                12, Ui.SECONDARY, false);
+        lastTv.setLayoutParams(Ui.lpTop(this, 2));
+        card.addView(lastTv);
+
+        driveInfo = Ui.tv(this, "Cloud backup: checking…", 12, Ui.TEXT, false);
+        driveInfo.setLayoutParams(Ui.lpTop(this, 6));
+        card.addView(driveInfo);
+
+        driveBackupBtn = Ui.primaryButton(this, "☁️ Backup to Drive", Ui.PRIMARY);
+        driveBackupBtn.setLayoutParams(Ui.lpTop(this, 12));
+        driveBackupBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { askDrivePasswordAndBackup(); }
+        });
+        card.addView(driveBackupBtn);
+
+        driveRestoreBtn = Ui.primaryButton(this, "⬇️ Restore from Drive", Ui.ACCENT);
+        driveRestoreBtn.setLayoutParams(Ui.lpTop(this, 10));
+        driveRestoreBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { doDriveRestore(); }
+        });
+        card.addView(driveRestoreBtn);
+
+        if (pendingRecoveryIntent != null) {
+            TextView grant = Ui.primaryButton(this, "Grant Drive Access", Ui.EXPENSE);
+            grant.setLayoutParams(Ui.lpTop(this, 10));
+            grant.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    try {
+                        startActivityForResult(pendingRecoveryIntent, REQ_DRIVE_RECOVERY);
+                    } catch (Exception e) {
+                        toast("Could not open the permission screen: " + e.getMessage());
+                    }
+                }
+            });
+            card.addView(grant);
+        }
+
+        refreshDriveInfo();
+        return card;
+    }
+
+    private void handleLinkResult(Intent data) {
+        try {
+            com.google.android.gms.auth.api.signin.GoogleSignInAccount account =
+                    AuthService.accountFromIntent(data);
+            if (account == null) return;
+            WalletDb live = store.db();
+            if (live.user != null && live.user.isGuest()) {
+                AuthService.applyLinkedAccount(live.user, account);
+            } else if (live.user == null) {
+                live.user = AuthService.userFromAccount(account);
+            }
+            store.save();
+            AppPrefs.setSignedIn(this, true);
+            toast("Google account linked: " + live.user.email);
+            render();
+        } catch (com.google.android.gms.common.api.ApiException e) {
+            if (e.getStatusCode() != 12501) {
+                toast("Google Sign-In failed (code " + e.getStatusCode() + ")");
+            }
+        }
+    }
+
+    private void setDriveBusy(boolean busy, String message) {
+        driveBusy = busy;
+        if (driveBackupBtn != null) driveBackupBtn.setEnabled(!busy);
+        if (driveRestoreBtn != null) driveRestoreBtn.setEnabled(!busy);
+        if (message != null) setStatus(message);
+    }
+
+    private void driveError(final String message, final Intent recovery) {
+        runOnUiThread(new Runnable() {
+            @Override public void run() {
+                if (isFinishing()) return;
+                setDriveBusy(false, null);
+                if (recovery != null) {
+                    pendingRecoveryIntent = recovery;
+                    toast(message + " Tap “Grant Drive Access” below.");
+                    render();
+                } else {
+                    toast("Drive: " + message);
+                    setStatus("Drive failed: " + message);
+                }
+            }
+        });
+    }
+
+    private void refreshDriveInfo() {
+        drive.fetchInfo(new DriveBackupService.Callback<DriveCodec.BackupInfo>() {
+            @Override public void onOk(final DriveCodec.BackupInfo info) {
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        if (isFinishing() || driveInfo == null) return;
+                        driveInfo.setText(info == null
+                                ? "Cloud backup: none yet"
+                                : "Cloud backup: " + info.prettyModified()
+                                        + "  •  " + info.prettySize());
+                    }
+                });
+            }
+            @Override public void onError(String message, Intent recovery) {
+                // Quiet on the info probe (the screen may be guest-less
+                // for other reasons); actions surface their own errors.
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        if (!isFinishing() && driveInfo != null) {
+                            driveInfo.setText("Cloud backup: sign-in needed");
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    private void askDrivePasswordAndBackup() {
+        if (driveBusy) return;
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(48, 16, 48, 0);
+        final CheckBox usePw = new CheckBox(this);
+        usePw.setText("Password protect / encrypt");
+        usePw.setTextColor(Ui.TEXT);
+        box.addView(usePw);
+        final EditText pw = Ui.input(this, "Enter backup password", "");
+        pw.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        pw.setEnabled(false);
+        box.addView(pw);
+        usePw.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override public void onCheckedChanged(CompoundButton b, boolean checked) {
+                pw.setEnabled(checked);
+            }
+        });
+        new AlertDialog.Builder(this)
+                .setTitle("Backup to Google Drive")
+                .setView(box)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Back Up", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int which) {
+                        final String password =
+                                usePw.isChecked() ? pw.getText().toString().trim() : "";
+                        doDriveBackup(password);
+                    }
+                })
+                .show();
+    }
+
+    private void doDriveBackup(final String password) {
+        setDriveBusy(true, "Preparing backup…");
+        new Thread(new Runnable() {
+            @Override public void run() {
+                final byte[] bytes;
+                try {
+                    String now = WalletLogic.nowIso();
+                    WalletDb live = store.db();
+                    String content = password.isEmpty()
+                            ? BackupCodec.createPlainBackup(live, now)
+                            : BackupCodec.createEncryptedBackup(live, password, now);
+                    bytes = content.getBytes(StandardCharsets.UTF_8);
+                } catch (final Exception e) {
+                    runOnUiThread(new Runnable() {
+                        @Override public void run() {
+                            setDriveBusy(false, null);
+                            toast("Backup failed: " + e.getMessage());
+                        }
+                    });
+                    return;
+                }
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        setStatus("Uploading backup to Google Drive…");
+                    }
+                });
+                drive.upload(bytes, new DriveBackupService.Callback<DriveCodec.BackupInfo>() {
+                    @Override public void onOk(final DriveCodec.BackupInfo info) {
+                        AppPrefs.setLastCloudBackup(ImportExportActivity.this,
+                                WalletLogic.nowIso());
+                        runOnUiThread(new Runnable() {
+                            @Override public void run() {
+                                if (isFinishing()) return;
+                                setDriveBusy(false, null);
+                                toast("☁️ Backup uploaded to Google Drive");
+                                setStatus("Drive backup complete"
+                                        + (info != null ? " — " + info.prettyModified()
+                                                + " • " + info.prettySize() : "") + ".");
+                                render();
+                            }
+                        });
+                    }
+                    @Override public void onError(String message, Intent recovery) {
+                        driveError(message, recovery);
+                    }
+                });
+            }
+        }, "drive-prep").start();
+    }
+
+    private void doDriveRestore() {
+        if (driveBusy) return;
+        setDriveBusy(true, "Checking Google Drive…");
+        drive.fetchInfo(new DriveBackupService.Callback<DriveCodec.BackupInfo>() {
+            @Override public void onOk(final DriveCodec.BackupInfo info) {
+                if (info == null) {
+                    runOnUiThread(new Runnable() {
+                        @Override public void run() {
+                            if (isFinishing()) return;
+                            setDriveBusy(false, null);
+                            toast("No backup found in Google Drive.");
+                            setStatus("No backup found in Google Drive.");
+                        }
+                    });
+                    return;
+                }
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        if (!isFinishing()) setStatus("Downloading backup from Drive…");
+                    }
+                });
+                drive.download(info.fileId, new DriveBackupService.Callback<byte[]>() {
+                    @Override public void onOk(final byte[] bytes) {
+                        runOnUiThread(new Runnable() {
+                            @Override public void run() {
+                                if (isFinishing()) return;
+                                setDriveBusy(false, null);
+                                // SAME preview + confirm + undo flow as a
+                                // local file restore (Phase 4).
+                                pendingImportContent =
+                                        new String(bytes, StandardCharsets.UTF_8);
+                                startBackupImport();
+                            }
+                        });
+                    }
+                    @Override public void onError(String message, Intent recovery) {
+                        driveError(message, recovery);
+                    }
+                });
+            }
+            @Override public void onError(String message, Intent recovery) {
+                driveError(message, recovery);
+            }
+        });
     }
 
     // ------------------------------------------------------------- backup export

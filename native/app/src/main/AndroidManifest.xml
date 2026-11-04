@@ -1,34 +1,92 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.smartwallet.smart_wallet"
-    android:versionCode="6"
-    android:versionName="2.0.0-preview4">
+    android:versionCode="7"
+    android:versionName="2.0.0-preview5">
 
     <uses-sdk
         android:minSdkVersion="26"
         android:targetSdkVersion="34" />
 
-    <!-- Phase 3 adds exactly these three permissions, all for local
-         reminders: post notifications, schedule them exactly, and
-         reschedule after a reboot/app update. -->
+    <!-- Phase 3: local reminders — post notifications, schedule them
+         exactly, and reschedule after a reboot/app update. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Phase 5: INTERNET for Google Sign-In + Drive backup;
+         USE_BIOMETRIC for the framework BiometricPrompt lock. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <application
         android:allowBackup="false"
+        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
         android:icon="@drawable/ic_launcher"
         android:label="Smart Wallet"
         android:theme="@android:style/Theme.Material.NoActionBar">
 
+        <!-- Play Services version (from play-services-basement). -->
+        <meta-data
+            android:name="com.google.android.gms.version"
+            android:value="@integer/google_play_services_version" />
+
+        <!-- Phase 5: Login is the LAUNCHER entry and gates the app
+             (session -> MainActivity, which applies the lock). -->
         <activity
-            android:name=".MainActivity"
+            android:name=".LoginActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Phase 5: biometric lock screen (internal). -->
+        <activity android:name=".LockActivity" android:exported="false" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop">
+            <!-- Widget deep links: smartwallet://quick-add?type=…
+                 and smartwallet://open-dashboard -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="smartwallet" />
+            </intent-filter>
+        </activity>
+
+        <!-- Phase 5: home-screen Quick Add widget -->
+        <receiver
+            android:name=".QuickAddWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_add_widget_info" />
+        </receiver>
+
+        <!-- Google Sign-In (merged by hand from play-services-auth /
+             play-services-base AAR manifests; see fetch-libs.sh). -->
+        <activity
+            android:name="com.google.android.gms.auth.api.signin.internal.SignInHubActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <service
+            android:name="com.google.android.gms.auth.api.signin.RevocationBoundService"
+            android:exported="true"
+            android:permission="com.google.android.gms.auth.api.signin.permission.REVOCATION_NOTIFICATION"
+            android:visibleToInstantApps="true" />
+        <activity
+            android:name="com.google.android.gms.common.api.GoogleApiActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <!-- Phase 2 screens (internal only) -->
         <activity android:name=".HistoryActivity" android:exported="false" />
