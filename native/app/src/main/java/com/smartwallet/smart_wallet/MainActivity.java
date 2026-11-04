@@ -54,8 +54,8 @@ public class MainActivity extends Activity {
     private static final String[] NAV_LABELS = {
             "Dashboard", "Transactions", "Accounts", "Config", "Planned",
             "Split Bills", "Debts", "Templates", "Import/Export", "Settings"};
-    // Nav indices that open a real screen (Import/Export is still a
-    // placeholder until Phase 4):
+    // Nav indices that open a real screen (every section is live
+    // since Phase 4):
     private static final int NAV_DASHBOARD = 0;
     private static final int NAV_TRANSACTIONS = 1;
     private static final int NAV_ACCOUNTS = 2;
@@ -64,6 +64,7 @@ public class MainActivity extends Activity {
     private static final int NAV_SPLITS = 5;
     private static final int NAV_DEBTS = 6;
     private static final int NAV_TEMPLATES = 7;
+    private static final int NAV_IMPORT_EXPORT = 8;
     private static final int NAV_SETTINGS = 9;
 
     private Store store;
@@ -212,6 +213,10 @@ public class MainActivity extends Activity {
             startActivity(new Intent(this, TemplatesActivity.class));
             return;
         }
+        if (idx == NAV_IMPORT_EXPORT) {
+            startActivity(new Intent(this, ImportExportActivity.class));
+            return;
+        }
         if (idx == NAV_SETTINGS) {
             startActivity(new Intent(this, SettingsActivity.class));
             return;
@@ -247,7 +252,7 @@ public class MainActivity extends Activity {
         title.setLayoutParams(tlp);
         page.addView(title);
 
-        TextView sub = tv("Backup import/export arrives in Phase 4.\nEverything else in the "
+        TextView sub = tv("This section is not available.\nEverything in the "
                 + "nav is live — see the roadmap in the project README.",
                 13, SECONDARY, false);
         sub.setGravity(Gravity.CENTER);

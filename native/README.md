@@ -141,11 +141,60 @@ Flutter sources; see `PHASE3-REPORT.md` for the semantics decisions):
   toggle + days-before stepper) writing the `UserProfile` fields the
   scheduler reads, with an in-app note when exact alarms aren't
   granted. Full settings arrive in a later phase.
-- Bottom nav: only **Import/Export** remains a placeholder (Phase 4).
+- Bottom nav: only **Import/Export** remained a placeholder (done in Phase 4).
 - Tests: **203 JVM checks** (84 from Phases 1–2 + 119 new) covering
   planned advance/completion, mark-paid effects, debt lifecycle with
   affectsAccount on and off, split validation/equal-split/paid
   toggling/recovery reversal, template drafts and reminder maths.
+
+## Phase 4 — what is in it
+
+- **Import/Export is live** (`ImportExportActivity` + pure-Java
+  `BackupCodec` / `CsvCodec` / `MiniJson`). All file access goes
+  through the Storage Access Framework (`ACTION_CREATE_DOCUMENT` /
+  `ACTION_OPEN_DOCUMENT`) — **no new permissions**; the manifest
+  still carries exactly the Phase 3 three.
+- **Backup export** writes the exact Flutter file formats:
+  plain `{format:"smartwallet_backup", …}` or, with an optional
+  password, Flutter's hand-rolled encrypted format
+  `{format:"smartwallet_encrypted", salt, iv, ciphertext, mac}` —
+  PBKDF2-HMAC-SHA256 (10,000 iterations) + gzip + HMAC-keystream XOR
+  + HMAC integrity MAC, replicated byte-for-byte from
+  `backup_service.dart`, so files interchange with the Flutter app
+  in **both directions**. Suggested file name matches Flutter's:
+  `smart_wallet_backup_<millis>.smartwallet`.
+- **Backup import/restore**: the file is detected as plain or
+  encrypted from its own header; encrypted files prompt for the
+  password (a wrong password fails on the MAC with Flutter's own
+  message, "Incorrect password or corrupted backup file."). A
+  preview shows created date, encrypted?, per-section counts, user
+  name and currency, with an explicit "replaces ALL current data"
+  confirm. The file is parsed **fully before** the live DB is
+  touched; before replacing, the current DB is saved as an internal
+  safety snapshot and **Undo last restore** (itself undoable) is
+  offered on the same screen. After a restore, notifications are
+  rescheduled and the app returns to a refreshed dashboard.
+- **CSV export** is Flutter's exact format: header
+  `ID,Type,Amount,Account,To Account,Category,Date,Note`, account /
+  category **names**, Dart-style amounts (`5000.0`), dates as
+  `d MMM yyyy, h:mm a`, package:csv quoting and CRLF endings, named
+  `smart_wallet_export_<millis>.csv`.
+- **CSV import mirrors Flutter**, quirks included: only the
+  Type/Amount/Date/Note columns are read (matched by header name),
+  every row lands in the **first account** with no category, unknown
+  types become `expense`, unparseable amounts/dates are skipped /
+  fall back to now, and there is no duplicate detection. Balances
+  move through `WalletLogic` like normal adds, and a summary shows
+  imported/skipped counts with reasons. One deliberate improvement:
+  native additionally parses Flutter's own display date format, so
+  a Flutter CSV export keeps its dates here (Flutter itself cannot
+  re-import them — it falls back to "now").
+- Tests: **310 JVM checks total** (203 + 107 new in
+  `tests/TestPhase4.java`), including byte-for-byte encryption
+  vectors against an independent reference implementation of the
+  Dart algorithm, the real starter backup as a fixture (net wallet
+  ₹1,75,850), CSV round-trips, and malformed-file rejection with
+  the live DB untouched. Details in `PHASE4-REPORT.md`.
 
 ## Data-format compatibility
 
@@ -161,13 +210,14 @@ The on-disk format **is** the Flutter backup format, unchanged:
 
 Field names, ISO-8601 date strings and ARGB `colorValue` all match the
 Flutter app, so a `.smartwallet` file exported from the Flutter app can
-be imported by this app in Phase 4 with no conversion — and vice versa.
+be imported by this app with no conversion — and vice versa (Phase 4,
+including Flutter's password-encrypted variant).
 
 ## Build
 
 ```bash
-./build-apk.sh        # -> SmartWallet-Native-v0.3.apk (debug-signed)
-./build-apk.sh test   # JVM tests for WalletLogic (203 checks)
+./build-apk.sh        # -> SmartWallet-Native-v0.4.apk (debug-signed)
+./build-apk.sh test   # JVM tests (310 checks: WalletLogic + Phase 4 codecs)
 ```
 
 Toolchain: JDK 17 and Android SDK platform 34 + build-tools 34.0.0.
@@ -181,14 +231,16 @@ earlier ones).
 > Flutter app but a *different* signature, so Android will not install
 > it over the Flutter app. Export a `.smartwallet` backup from the
 > Flutter app first (its data is deleted on uninstall), then uninstall
-> the Flutter app, then install this one. Phase 1 only displays the
-> seeded starter data — backup import arrives in Phase 4.
+> the Flutter app, then install this one and restore the backup from
+> the Import/Export screen (Phase 4). The side-by-side preview build
+> (`com.smartwallet.preview`) needs no uninstall and is the easiest
+> way to test a restore first.
 
 ## Roadmap
 
 - **Phase 1 (done):** foundation — models, store, WalletLogic + tests, dashboard.
 - **Phase 2 (done):** transactions CRUD; accounts & categories management; split transactions read-only (see above).
 - **Phase 3 (done):** planned payments + notifications; debts & credits, split bills + split editing, templates; minimal reminders Settings.
-- **Phase 4:** backup import/export incl. password-encrypted `.smartwallet` files; CSV import/export.
+- **Phase 4 (done):** backup import/export incl. password-encrypted `.smartwallet` files (byte-compatible with Flutter both ways); CSV import/export in Flutter's exact format; restore preview + safety snapshot with undo.
 - **Phase 5:** Google Sign-In + Drive AppData backup; biometric lock; home-screen Quick Add widget.
 - **Phase 6:** polish, charts, extra features.

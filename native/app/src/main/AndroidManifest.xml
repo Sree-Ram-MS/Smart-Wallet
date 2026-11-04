@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.smartwallet.smart_wallet"
-    android:versionCode="5"
-    android:versionName="2.0.0-preview3">
+    android:versionCode="6"
+    android:versionName="2.0.0-preview4">
 
     <uses-sdk
         android:minSdkVersion="26"
@@ -53,6 +53,11 @@
         <activity android:name=".TemplateEditActivity" android:exported="false"
             android:windowSoftInputMode="adjustResize" />
         <activity android:name=".SettingsActivity" android:exported="false" />
+
+        <!-- Phase 4: Import/Export uses the Storage Access Framework
+             (ACTION_CREATE_DOCUMENT / ACTION_OPEN_DOCUMENT), so it
+             needs no permissions of its own. -->
+        <activity android:name=".ImportExportActivity" android:exported="false" />
 
         <!-- Phase 3 reminders -->
         <receiver android:name=".NotifReceiver" android:exported="false" />

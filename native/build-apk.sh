@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds SmartWallet-Native-v0.3.apk without Gradle: aapt2 + javac + d8 + apksigner.
+# Builds SmartWallet-Native-v0.4.apk without Gradle: aapt2 + javac + d8 + apksigner.
 # Needs: JDK 17 (javac, keytool) and Android SDK platform 34 + build-tools 34.0.0.
 # Toolchain defaults point at the copies already installed on this machine
 # (~/workspace/period-tracker/tools); override with JAVA_HOME / ANDROID_SDK_ROOT.
@@ -16,14 +16,18 @@ fi
 PKG=app/src/main/java/com/smartwallet/smart_wallet
 
 if [ "${1:-}" = "test" ]; then
-  # Pure-Java classes only (no Android imports): models + WalletLogic.
+  # Pure-Java classes only (no Android imports): models + WalletLogic
+  # + the Phase 4 format codecs (MiniJson / BackupCodec / CsvCodec).
   rm -rf build/test-classes && mkdir -p build/test-classes
   javac -encoding UTF-8 -d build/test-classes \
     "$PKG/Account.java" "$PKG/Category.java" "$PKG/SplitMember.java" \
     "$PKG/Transaction.java" "$PKG/PlannedPayment.java" "$PKG/DebtCredit.java" \
     "$PKG/Template.java" "$PKG/UserProfile.java" "$PKG/WalletDb.java" \
-    "$PKG/WalletLogic.java" tests/TestWalletLogic.java
+    "$PKG/WalletLogic.java" \
+    "$PKG/MiniJson.java" "$PKG/BackupCodec.java" "$PKG/CsvCodec.java" \
+    tests/TestWalletLogic.java tests/TestPhase4.java
   java -cp build/test-classes TestWalletLogic
+  java -cp build/test-classes TestPhase4
   exit 0
 fi
 
@@ -70,9 +74,9 @@ if [ ! -f build/debug.keystore ]; then
     -dname "CN=Android Debug,O=Android,C=US" >/dev/null 2>&1
 fi
 "$BUILD_TOOLS/apksigner" sign --ks build/debug.keystore --ks-pass pass:android \
-  --key-pass pass:android --out SmartWallet-Native-v0.3.apk build/aligned.apk
-"$BUILD_TOOLS/apksigner" verify SmartWallet-Native-v0.3.apk
+  --key-pass pass:android --out SmartWallet-Native-v0.4.apk build/aligned.apk
+"$BUILD_TOOLS/apksigner" verify SmartWallet-Native-v0.4.apk
 
-ls -l SmartWallet-Native-v0.3.apk
-sha256sum SmartWallet-Native-v0.3.apk
-echo "OK: SmartWallet-Native-v0.3.apk"
+ls -l SmartWallet-Native-v0.4.apk
+sha256sum SmartWallet-Native-v0.4.apk
+echo "OK: SmartWallet-Native-v0.4.apk"

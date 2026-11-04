@@ -92,6 +92,50 @@ public final class Store {
         return new File(ctx.getFilesDir(), FILE_NAME);
     }
 
+    // ------------------------------------------- Phase 4: restore safety
+
+    private static final String SAFETY_NAME = "smartwallet_safety.json";
+
+    private File safetyFile() {
+        return new File(ctx.getFilesDir(), SAFETY_NAME);
+    }
+
+    /**
+     * Replace the live DB with a restored one (Phase 4 backup import).
+     * The caller parses and previews the backup FIRST and takes a
+     * safety snapshot before calling this.
+     */
+    public void replaceDb(WalletDb newDb) {
+        save(newDb);
+    }
+
+    /**
+     * Save a single rotating safety copy of the CURRENT live DB, taken
+     * just before a restore replaces it, so a bad restore can be
+     * undone. Returns false when the snapshot could not be written —
+     * the restore must not proceed in that case.
+     */
+    public boolean saveSafetySnapshot() {
+        try {
+            String text = toJson(db()).toString(2);
+            FileOutputStream out = new FileOutputStream(safetyFile());
+            out.write(text.getBytes(StandardCharsets.UTF_8));
+            out.close();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public boolean hasSafetySnapshot() {
+        return safetyFile().exists();
+    }
+
+    /** Parse the safety snapshot (throws on a corrupt snapshot file). */
+    public WalletDb loadSafetySnapshot() throws Exception {
+        return parse(readAll(new FileInputStream(safetyFile())));
+    }
+
     private static String readAll(InputStream in) throws Exception {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         byte[] chunk = new byte[8192];
