@@ -101,6 +101,225 @@ public final class WalletLogic {
         return null;
     }
 
+    // ------------------------------------------------- Phase 2: balance FX
+
+    /**
+     * Apply a transaction's balance effect to its account(s):
+     * income +amount, expense -amount, transfer -from / +to.
+     * Account.balance is the stored field (as in Flutter); everything
+     * else (net wallet, cards) reads it, so this is the ONLY place
+     * balances change when transactions are added/edited/deleted.
+     */
+    public static void applyTransaction(List<Account> accounts, Transaction t) {
+        move(accounts, t, +1);
+    }
+
+    /** Undo a transaction's balance effect (exact inverse of apply). */
+    public static void reverseTransaction(List<Account> accounts, Transaction t) {
+        move(accounts, t, -1);
+    }
+
+    private static void move(List<Account> accounts, Transaction t, int sign) {
+        if (accounts == null || t == null || t.type == null) return;
+        if ("income".equals(t.type)) {
+            Account a = accountById(accounts, t.accountId);
+            if (a != null) a.balance += sign * t.amount;
+        } else if ("expense".equals(t.type)) {
+            Account a = accountById(accounts, t.accountId);
+            if (a != null) a.balance -= sign * t.amount;
+        } else if ("transfer".equals(t.type)) {
+            Account from = accountById(accounts, t.accountId);
+            Account to = accountById(accounts, t.toAccountId);
+            if (from != null) from.balance -= sign * t.amount;
+            if (to != null && to != from) to.balance += sign * t.amount;
+        }
+    }
+
+    /** Add a transaction and apply its balance effect. */
+    public static void addTransaction(WalletDb db, Transaction t) {
+        if (db == null || t == null) return;
+        applyTransaction(db.accounts, t);
+        db.transactions.add(t);
+    }
+
+    /** Delete by id: reverse the balance effect, then remove. */
+    public static boolean deleteTransaction(WalletDb db, String txId) {
+        if (db == null || txId == null) return false;
+        for (int i = 0; i < db.transactions.size(); i++) {
+            Transaction t = db.transactions.get(i);
+            if (t != null && txId.equals(t.id)) {
+                reverseTransaction(db.accounts, t);
+                db.transactions.remove(i);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Edit = reverse the OLD transaction, swap it in the list, apply the
+     * NEW one. The new transaction keeps the old one's id. Splits are the
+     * caller's problem: the UI blocks editing split transactions, and
+     * this method copies nothing — it uses exactly what it is given.
+     */
+    public static boolean updateTransaction(WalletDb db, Transaction updated) {
+        if (db == null || updated == null || updated.id == null) return false;
+        for (int i = 0; i < db.transactions.size(); i++) {
+            Transaction old = db.transactions.get(i);
+            if (old != null && updated.id.equals(old.id)) {
+                reverseTransaction(db.accounts, old);
+                db.transactions.set(i, updated);
+                applyTransaction(db.accounts, updated);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static Transaction transactionById(WalletDb db, String txId) {
+        if (db == null || txId == null) return null;
+        for (Transaction t : db.transactions) {
+            if (t != null && txId.equals(t.id)) return t;
+        }
+        return null;
+    }
+
+    // ------------------------------------------------- Phase 2: filtering
+
+    /**
+     * History filtering: type filter ("all" | "income" | "expense" |
+     * "transfer") plus a case-insensitive text search over note,
+     * category name and account name(s). Returns newest first.
+     */
+    public static List<Transaction> filterTransactions(List<Transaction> txs,
+            String typeFilter, String query,
+            List<Category> categories, List<Account> accounts) {
+        String q = query == null ? "" : query.trim().toLowerCase();
+        List<Transaction> matched = new ArrayList<>();
+        if (txs != null) {
+            for (Transaction t : txs) {
+                if (t == null) continue;
+                if (typeFilter != null && !"all".equals(typeFilter)
+                        && !typeFilter.equals(t.type)) continue;
+                if (!q.isEmpty()) {
+                    boolean hit = t.note != null && t.note.toLowerCase().contains(q);
+                    Category c = categoryById(categories, t.categoryId);
+                    if (!hit && c != null && c.name != null) {
+                        hit = c.name.toLowerCase().contains(q);
+                    }
+                    Account a = accountById(accounts, t.accountId);
+                    if (!hit && a != null && a.name != null) {
+                        hit = a.name.toLowerCase().contains(q);
+                    }
+                    Account to = accountById(accounts, t.toAccountId);
+                    if (!hit && to != null && to.name != null) {
+                        hit = to.name.toLowerCase().contains(q);
+                    }
+                    if (!hit) continue;
+                }
+                matched.add(t);
+            }
+        }
+        return recentTransactions(matched, -1);
+    }
+
+    // ------------------------------------------------ Phase 2: delete guards
+
+    /**
+     * Why an account cannot be deleted, or null when deletion is safe.
+     * Any reference from a transaction (either side of a transfer), a
+     * planned payment, a debt/credit or a template blocks deletion —
+     * deleting would leave a dangling reference.
+     */
+    public static String accountDeleteBlockReason(WalletDb db, String accountId) {
+        if (db == null || accountId == null) return "Unknown account.";
+        for (Transaction t : db.transactions) {
+            if (t != null && (accountId.equals(t.accountId)
+                    || accountId.equals(t.toAccountId))) {
+                return "This account is used by transactions. "
+                        + "Delete or move those transactions first.";
+            }
+        }
+        for (PlannedPayment p : db.plannedPayments) {
+            if (p != null && accountId.equals(p.accountId)) {
+                return "This account is used by a planned payment. "
+                        + "Delete that planned payment first.";
+            }
+        }
+        for (DebtCredit d : db.debtCredits) {
+            if (d != null && accountId.equals(d.accountId)) {
+                return "This account is used by a debt / credit record. "
+                        + "Delete that record first.";
+            }
+        }
+        for (Template t : db.templates) {
+            if (t != null && (accountId.equals(t.accountId)
+                    || accountId.equals(t.toAccountId))) {
+                return "This account is used by a template. "
+                        + "Delete that template first.";
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Why a category cannot be deleted, or null when deletion is safe:
+     * used by any transaction/planned payment/debt/template, or it has
+     * sub-categories of its own.
+     */
+    public static String categoryDeleteBlockReason(WalletDb db, String categoryId) {
+        if (db == null || categoryId == null) return "Unknown category.";
+        for (Category c : db.categories) {
+            if (c != null && categoryId.equals(c.parentId)) {
+                return "This category has sub-categories. "
+                        + "Delete or re-parent them first.";
+            }
+        }
+        for (Transaction t : db.transactions) {
+            if (t != null && categoryId.equals(t.categoryId)) {
+                return "This category is used by transactions. "
+                        + "Re-categorise those transactions first.";
+            }
+        }
+        for (PlannedPayment p : db.plannedPayments) {
+            if (p != null && categoryId.equals(p.categoryId)) {
+                return "This category is used by a planned payment. "
+                        + "Change that planned payment first.";
+            }
+        }
+        for (DebtCredit d : db.debtCredits) {
+            if (d != null && categoryId.equals(d.categoryId)) {
+                return "This category is used by a debt / credit record. "
+                        + "Change that record first.";
+            }
+        }
+        for (Template t : db.templates) {
+            if (t != null && categoryId.equals(t.categoryId)) {
+                return "This category is used by a template. "
+                        + "Change that template first.";
+            }
+        }
+        return null;
+    }
+
+    /** Categories of one type ordered for a picker: each top-level
+     *  category followed by its sub-categories. */
+    public static List<Category> categoriesForPicker(List<Category> categories, String type) {
+        List<Category> out = new ArrayList<>();
+        if (categories == null || type == null) return out;
+        for (Category c : categories) {
+            if (c != null && c.parentId == null && type.equals(c.type)) {
+                out.add(c);
+                for (Category sub : categories) {
+                    if (sub != null && c.id != null && c.id.equals(sub.parentId)) {
+                        out.add(sub);
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
     // ---------------------------------------------------------------- dates
 
     /** Year from an ISO date string, or -1 when unparseable. */

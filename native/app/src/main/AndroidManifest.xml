@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.smartwallet.smart_wallet"
-    android:versionCode="3"
-    android:versionName="2.0.0-preview1">
+    android:versionCode="4"
+    android:versionName="2.0.0-preview2">
 
     <uses-sdk
         android:minSdkVersion="26"
         android:targetSdkVersion="34" />
 
-    <!-- Phase 1 is a pure local dashboard on seeded data: NO permissions at all. -->
+    <!-- Phase 1 + 2 are pure local: NO permissions at all. -->
 
     <application
         android:allowBackup="false"
@@ -24,5 +24,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Phase 2 screens (internal only) -->
+        <activity android:name=".HistoryActivity" android:exported="false" />
+        <activity android:name=".TxEditActivity" android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".AccountsActivity" android:exported="false" />
+        <activity android:name=".AccountEditActivity" android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".CategoriesActivity" android:exported="false" />
+        <activity android:name=".CategoryEditActivity" android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

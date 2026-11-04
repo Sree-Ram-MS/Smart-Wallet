@@ -2,6 +2,7 @@ package com.smartwallet.smart_wallet;
 
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -49,14 +50,20 @@ public class MainActivity extends Activity {
     private static final int BORDER = Color.rgb(0x2E, 0x31, 0x50);
 
     private static final String[] NAV_ICONS = {
-            "🏠", "🧾", "🗓️", "👥", "🤝", "📋", "📤", "⚙️"};
+            "🏠", "🧾", "🏦", "🧩", "🗓️", "👥", "🤝", "📋", "📤", "⚙️"};
     private static final String[] NAV_LABELS = {
-            "Dashboard", "Transactions", "Planned", "Split Bills",
-            "Debts", "Templates", "Import/Export", "Settings"};
+            "Dashboard", "Transactions", "Accounts", "Config", "Planned",
+            "Split Bills", "Debts", "Templates", "Import/Export", "Settings"};
+    // Nav indices that open a real Phase 2 screen (others = placeholder):
+    private static final int NAV_DASHBOARD = 0;
+    private static final int NAV_TRANSACTIONS = 1;
+    private static final int NAV_ACCOUNTS = 2;
+    private static final int NAV_CONFIG = 3;
 
     private Store store;
     private WalletDb db;
     private FrameLayout container;
+    private TextView fab;
     private TextView[] navItems;
     private int selectedNav = 0;
 
@@ -74,12 +81,45 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(BG);
 
         container = new FrameLayout(this);
-        container.setLayoutParams(new LinearLayout.LayoutParams(
+
+        // FAB "+" (Phase 2) floats over the content, above the bottom nav.
+        fab = tv("+", 28, Color.WHITE, true);
+        fab.setGravity(Gravity.CENTER);
+        GradientDrawable fabBg = new GradientDrawable();
+        fabBg.setShape(GradientDrawable.OVAL);
+        fabBg.setColor(PRIMARY);
+        fab.setBackground(fabBg);
+        FrameLayout.LayoutParams fabLp = new FrameLayout.LayoutParams(dp(56), dp(56));
+        fabLp.gravity = Gravity.BOTTOM | Gravity.END;
+        fabLp.rightMargin = dp(16);
+        fabLp.bottomMargin = dp(16);
+        fab.setLayoutParams(fabLp);
+        fab.setElevation(dp(6));
+        fab.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, TxEditActivity.class));
+            }
+        });
+
+        FrameLayout contentFrame = new FrameLayout(this);
+        contentFrame.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        root.addView(container);
+        contentFrame.addView(container);
+        contentFrame.addView(fab);
+        root.addView(contentFrame);
 
         root.addView(buildBottomNav());
         setContentView(root);
+        showDashboard();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Reflect any edits made in the Phase 2 screens.
+        db = store.load();
+        selectedNav = NAV_DASHBOARD;
+        styleNav();
         showDashboard();
     }
 
@@ -131,9 +171,23 @@ public class MainActivity extends Activity {
     }
 
     private void onNavTapped(int idx) {
+        // Phase 2 screens are separate Activities; the dashboard stays
+        // underneath and refreshes itself in onResume when we come back.
+        if (idx == NAV_TRANSACTIONS) {
+            startActivity(new Intent(this, HistoryActivity.class));
+            return;
+        }
+        if (idx == NAV_ACCOUNTS) {
+            startActivity(new Intent(this, AccountsActivity.class));
+            return;
+        }
+        if (idx == NAV_CONFIG) {
+            startActivity(new Intent(this, CategoriesActivity.class));
+            return;
+        }
         selectedNav = idx;
         styleNav();
-        if (idx == 0) {
+        if (idx == NAV_DASHBOARD) {
             showDashboard();
         } else {
             showPlaceholder(NAV_LABELS[idx]);
@@ -143,6 +197,7 @@ public class MainActivity extends Activity {
     // ------------------------------------------------------------ placeholder
 
     private void showPlaceholder(String section) {
+        if (fab != null) fab.setVisibility(View.GONE);
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setGravity(Gravity.CENTER);
@@ -161,8 +216,9 @@ public class MainActivity extends Activity {
         title.setLayoutParams(tlp);
         page.addView(title);
 
-        TextView sub = tv("Coming in a later phase.\nPhase 1 ships the Dashboard on your wallet data — "
-                + "this section is on the roadmap in the project README.", 13, SECONDARY, false);
+        TextView sub = tv("Coming in a later phase.\nDashboard, Transactions, Accounts and "
+                + "Categories are live — this section is on the roadmap in the "
+                + "project README.", 13, SECONDARY, false);
         sub.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -178,6 +234,7 @@ public class MainActivity extends Activity {
     // ------------------------------------------------------------ dashboard
 
     private void showDashboard() {
+        if (fab != null) fab.setVisibility(View.VISIBLE);
         ScrollView scroll = new ScrollView(this);
         scroll.setBackgroundColor(BG);
         scroll.setFillViewport(true);
@@ -277,9 +334,14 @@ public class MainActivity extends Activity {
         entrance(flowRow, anim); anim += 60;
 
         // Accounts
-        TextView accTitle = tv("Accounts", 16, TEXT, true);
+        TextView accTitle = tv("Accounts  ›", 16, TEXT, true);
         LinearLayout.LayoutParams atp = lp(); atp.topMargin = dp(22);
         accTitle.setLayoutParams(atp);
+        accTitle.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, AccountsActivity.class));
+            }
+        });
         page.addView(accTitle);
         entrance(accTitle, anim); anim += 60;
 
@@ -384,6 +446,13 @@ public class MainActivity extends Activity {
             off.setLayoutParams(olp);
             card.addView(off);
         }
+        card.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Intent i = new Intent(MainActivity.this, AccountEditActivity.class);
+                i.putExtra(AccountEditActivity.EXTRA_ACCOUNT_ID, a.id);
+                startActivity(i);
+            }
+        });
         return card;
     }
 
@@ -440,6 +509,13 @@ public class MainActivity extends Activity {
         TextView amount = tv(WalletLogic.formatSigned(t), 15, amountColor, true);
         amount.setGravity(Gravity.RIGHT);
         row.addView(amount);
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Intent i = new Intent(MainActivity.this, TxEditActivity.class);
+                i.putExtra(TxEditActivity.EXTRA_TX_ID, t.id);
+                startActivity(i);
+            }
+        });
         return row;
     }
 

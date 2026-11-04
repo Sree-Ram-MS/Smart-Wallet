@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds SmartWallet-Native-v0.1.apk without Gradle: aapt2 + javac + d8 + apksigner.
+# Builds SmartWallet-Native-v0.2.apk without Gradle: aapt2 + javac + d8 + apksigner.
 # Needs: JDK 17 (javac, keytool) and Android SDK platform 34 + build-tools 34.0.0.
 # Toolchain defaults point at the copies already installed on this machine
 # (~/workspace/period-tracker/tools); override with JAVA_HOME / ANDROID_SDK_ROOT.
@@ -70,9 +70,9 @@ if [ ! -f build/debug.keystore ]; then
     -dname "CN=Android Debug,O=Android,C=US" >/dev/null 2>&1
 fi
 "$BUILD_TOOLS/apksigner" sign --ks build/debug.keystore --ks-pass pass:android \
-  --key-pass pass:android --out SmartWallet-Native-v0.1.apk build/aligned.apk
-"$BUILD_TOOLS/apksigner" verify SmartWallet-Native-v0.1.apk
+  --key-pass pass:android --out SmartWallet-Native-v0.2.apk build/aligned.apk
+"$BUILD_TOOLS/apksigner" verify SmartWallet-Native-v0.2.apk
 
-ls -l SmartWallet-Native-v0.1.apk
-sha256sum SmartWallet-Native-v0.1.apk
-echo "OK: SmartWallet-Native-v0.1.apk"
+ls -l SmartWallet-Native-v0.2.apk
+sha256sum SmartWallet-Native-v0.2.apk
+echo "OK: SmartWallet-Native-v0.2.apk"

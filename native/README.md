@@ -7,7 +7,8 @@ no Gradle** — using the same aapt2 + javac + d8 + apksigner pipeline as
 the Her Cycle app.
 
 - Package: `com.smartwallet.smart_wallet` (same as the Flutter app)
-- Phase 1 build: **SmartWallet-Native-v0.1.apk — 29,251 bytes** (≈ 0.1% of the Flutter APK)
+- Phase 1 build: SmartWallet-Native-v0.1.apk — 29,251 bytes (≈ 0.1% of the Flutter APK)
+- Phase 2 build: **SmartWallet-Native-v0.2.apk — 49,731 bytes**, versionCode 4 / `2.0.0-preview2`
 - minSdk 26 · targetSdk 34 · **zero permissions**
 
 ## Phase 1 — what is in it
@@ -39,6 +40,45 @@ the Her Cycle app.
   Split Bills, Debts, Templates, Import/Export, Settings); the others
   show a "Coming in a later phase" placeholder for now.
 
+## Phase 2 — what is in it
+
+The wallet data is now fully editable, matching the Flutter app's behaviour:
+
+- **Transactions** (`HistoryActivity` + `TxEditActivity`): full history,
+  newest first, with text search (note / category / account) and
+  All / Income / Expense / Transfer filter chips. Add / edit / delete with
+  type, amount, account (plus to-account for transfers), a category picker
+  that lists sub-categories under their parents and only offers categories
+  of the matching type (transfers have no category), a date picker and a
+  note. Dashboard and history both have a **+** to add a transaction.
+- **Balance effects live in `WalletLogic` only** (pure Java, JVM-tested):
+  income adds, expense subtracts, transfer moves between accounts;
+  deleting a transaction reverses it; editing = reverse old + apply new.
+  `Account.balance` remains the stored field, exactly as in Flutter.
+- **Accounts** (`AccountsActivity` + `AccountEditActivity`): net-wallet
+  header, account cards, add/edit with name, balance, currency, emoji
+  presets + free text, the Flutter account-colour palette, card type
+  (Mastercard / Visa / Rupay / American Express / Cash / Bank / UPI /
+  Other), notes and the count-in-net-wallet switch. **Delete is blocked**
+  with an explanation while any transaction, planned payment, debt/credit
+  or template references the account.
+- **Categories** (`CategoriesActivity` + `CategoryEditActivity`, under
+  Config in the bottom nav): grouped by Income / Expense with
+  sub-categories indented under parents. Add/edit with name, type, emoji,
+  the Flutter chart-colour palette and an optional same-type top-level
+  parent. **Delete is blocked** while the category is used anywhere or
+  has sub-categories; a parent category's type can't be changed.
+- **Split transactions are read-only in Phase 2** (decision): opening one
+  shows its split breakdown with a clear message and no Save button, so an
+  edit can never silently destroy splits. It can still be deleted — an
+  explicit, confirmed action that reverses the full amount. Split
+  *editing* arrives in Phase 3.
+- Every change saves through `Store` immediately, and the dashboard
+  reloads in `onResume`, so balances and totals are always current.
+- Bottom nav is now 10 entries: Dashboard, Transactions, Accounts and
+  Config are live; Planned, Split Bills, Debts, Templates, Import/Export
+  and Settings remain placeholders for their phases.
+
 ## Data-format compatibility
 
 The on-disk format **is** the Flutter backup format, unchanged:
@@ -58,8 +98,8 @@ be imported by this app in Phase 4 with no conversion — and vice versa.
 ## Build
 
 ```bash
-./build-apk.sh        # -> SmartWallet-Native-v0.1.apk (debug-signed)
-./build-apk.sh test   # JVM tests for WalletLogic (41 checks)
+./build-apk.sh        # -> SmartWallet-Native-v0.2.apk (debug-signed)
+./build-apk.sh test   # JVM tests for WalletLogic (84 checks)
 ```
 
 Toolchain: JDK 17 and Android SDK platform 34 + build-tools 34.0.0.
@@ -79,7 +119,7 @@ earlier ones).
 ## Roadmap
 
 - **Phase 1 (done):** foundation — models, store, WalletLogic + tests, dashboard.
-- **Phase 2:** transactions CRUD; accounts & categories management.
+- **Phase 2 (done):** transactions CRUD; accounts & categories management; split transactions read-only (see above).
 - **Phase 3:** planned payments + notifications; debts, split bills, templates.
 - **Phase 4:** backup import/export incl. password-encrypted `.smartwallet` files; CSV import/export.
 - **Phase 5:** Google Sign-In + Drive AppData backup; biometric lock; home-screen Quick Add widget.
