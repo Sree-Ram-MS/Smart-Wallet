@@ -79,6 +79,74 @@ The wallet data is now fully editable, matching the Flutter app's behaviour:
   Config are live; Planned, Split Bills, Debts, Templates, Import/Export
   and Settings remain placeholders for their phases.
 
+## Phase 3 — what is in it
+
+Planned payments, reminders, debts & credits, split bills and templates
+are live, mirroring the Flutter app's behaviour (checked against the
+Flutter sources; see `PHASE3-REPORT.md` for the semantics decisions):
+
+- **Planned Payments** (`PlannedActivity` + `PlannedEditActivity`):
+  sorted by next due date, overdue highlighted, occurrence progress and
+  end conditions (never / until date / N occurrences). Add/edit/delete
+  with name, amount, account, expense category, due date, recurring
+  period (daily/weekly/monthly/yearly), note, and **split members**
+  edited like transaction splits. **Mark Paid** records the real expense
+  transaction (note "Planned Payment: {name}", split members copied
+  fresh and unpaid), stamps lastPaidDate and advances the schedule —
+  month-end clamped (Jan 31 → Feb 28/29) — completing when the end
+  condition is met or immediately for one-time payments. **Skip** (a
+  small native extra; Flutter has no skip) advances without paying.
+  Date/advance math is pure Java in `WalletLogic` and JVM-tested.
+- **Notifications** (`NotifService` + receivers): the app's first
+  permissions — exactly `POST_NOTIFICATIONS`, `SCHEDULE_EXACT_ALARM`,
+  `RECEIVE_BOOT_COMPLETED`. Channel and wording mirror Flutter's
+  NotificationService: a daily reminder (id 100) at the profile's time,
+  and one reminder per planned payment (ids 200–499) at 09:00,
+  `plannedReminderDaysBefore` days before its due date. Exact alarms
+  when the OS allows them, inexact fallback otherwise; rescheduled on
+  app start, on any planned-payment change, on settings change, and
+  after reboot/app update via `BootReceiver`. Android 13+ asks for the
+  notification permission on first launch.
+- **Debts & Credits** (`DebtsActivity` + `DebtEditActivity`): one screen
+  with Lent / Borrowed tabs (Flutter ships two screens over the same
+  data), active totals per direction, Active and Recovered/Repaid
+  sections. Add/edit/delete with direction, person, amount, account,
+  optional category, start/due dates, notes and the affects-account
+  switch. When a record affects an account, create/settle/reopen/delete
+  keep a linked transaction in step (lent = expense "Lent to {person}",
+  borrowed = income "Borrowed from {person}", settle the mirror image),
+  exactly as Flutter's HiveService does; seed-style records without a
+  linked transaction reverse their direct balance effect on delete.
+- **Split Bills** (`SplitsActivity`): every split transaction with
+  Total Outflow / Recovered / Pending totals and per-member rows.
+  **Collect** marks a member paid and credits their share into the
+  chosen account (default: the expense's account) as a direct balance
+  adjustment — Flutter records no transaction for a repayment, and
+  neither does native; **Undo** debits it back. "Me" is my own share
+  and never collectible.
+- **Split editing** (`TxEditActivity` + shared `SplitEditor`): the
+  Phase 2 read-only block is gone. Expenses get a split switch and a
+  members editor — add/remove people, Split Equally (paid members keep
+  their share; the rest is split evenly, last person takes the paisa
+  remainder so shares always sum exactly) and save-time validation
+  that shares sum to the amount within ₹0.01. Existing members' paid
+  state survives edits, so collected money stays consistent.
+- **Templates** (`TemplatesActivity` + `TemplateEditActivity`):
+  list/add/edit/delete; **Use** (or tapping the card) opens the
+  transaction form prefilled via `WalletLogic.draftFromTemplate` and
+  saves through the normal path. Transfer templates carry a
+  to-account (Flutter's editor never sets one; native supports it).
+- **Settings** (`SettingsActivity`): minimal for now — profile display
+  plus the **Reminders** section (daily toggle + time picker, planned
+  toggle + days-before stepper) writing the `UserProfile` fields the
+  scheduler reads, with an in-app note when exact alarms aren't
+  granted. Full settings arrive in a later phase.
+- Bottom nav: only **Import/Export** remains a placeholder (Phase 4).
+- Tests: **203 JVM checks** (84 from Phases 1–2 + 119 new) covering
+  planned advance/completion, mark-paid effects, debt lifecycle with
+  affectsAccount on and off, split validation/equal-split/paid
+  toggling/recovery reversal, template drafts and reminder maths.
+
 ## Data-format compatibility
 
 The on-disk format **is** the Flutter backup format, unchanged:
@@ -98,8 +166,8 @@ be imported by this app in Phase 4 with no conversion — and vice versa.
 ## Build
 
 ```bash
-./build-apk.sh        # -> SmartWallet-Native-v0.2.apk (debug-signed)
-./build-apk.sh test   # JVM tests for WalletLogic (84 checks)
+./build-apk.sh        # -> SmartWallet-Native-v0.3.apk (debug-signed)
+./build-apk.sh test   # JVM tests for WalletLogic (203 checks)
 ```
 
 Toolchain: JDK 17 and Android SDK platform 34 + build-tools 34.0.0.
@@ -120,7 +188,7 @@ earlier ones).
 
 - **Phase 1 (done):** foundation — models, store, WalletLogic + tests, dashboard.
 - **Phase 2 (done):** transactions CRUD; accounts & categories management; split transactions read-only (see above).
-- **Phase 3:** planned payments + notifications; debts, split bills, templates.
+- **Phase 3 (done):** planned payments + notifications; debts & credits, split bills + split editing, templates; minimal reminders Settings.
 - **Phase 4:** backup import/export incl. password-encrypted `.smartwallet` files; CSV import/export.
 - **Phase 5:** Google Sign-In + Drive AppData backup; biometric lock; home-screen Quick Add widget.
 - **Phase 6:** polish, charts, extra features.

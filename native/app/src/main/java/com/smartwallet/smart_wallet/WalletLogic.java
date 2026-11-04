@@ -133,6 +133,20 @@ public final class WalletLogic {
             if (from != null) from.balance -= sign * t.amount;
             if (to != null && to != from) to.balance += sign * t.amount;
         }
+        // Phase 3 (mirrors Flutter _applyTransactionToBalances): split
+        // recoveries already collected move with the transaction too —
+        // applying credits each paid member's recovery account, reversing
+        // debits them back. Members paid without a recorded account
+        // (paidAccountId == null, e.g. the seeded "Me") never moved money
+        // and are skipped, exactly as in Flutter.
+        if (t.isSplit && t.splits != null) {
+            for (SplitMember s : t.splits) {
+                if (s != null && s.isPaid && s.paidAccountId != null) {
+                    Account rec = accountById(accounts, s.paidAccountId);
+                    if (rec != null) rec.balance += sign * s.amount;
+                }
+            }
+        }
     }
 
     /** Add a transaction and apply its balance effect. */
@@ -158,9 +172,10 @@ public final class WalletLogic {
 
     /**
      * Edit = reverse the OLD transaction, swap it in the list, apply the
-     * NEW one. The new transaction keeps the old one's id. Splits are the
-     * caller's problem: the UI blocks editing split transactions, and
-     * this method copies nothing — it uses exactly what it is given.
+     * NEW one. The new transaction keeps the old one's id. Since Phase 3
+     * the editor supplies the full split member list (paid state
+     * preserved), so reversing the old record — recoveries included —
+     * and applying the new one stays consistent.
      */
     public static boolean updateTransaction(WalletDb db, Transaction updated) {
         if (db == null || updated == null || updated.id == null) return false;
@@ -318,6 +333,551 @@ public final class WalletLogic {
             }
         }
         return out;
+    }
+
+    // ================================================ Phase 3: planned payments
+
+    public static PlannedPayment plannedById(WalletDb db, String id) {
+        if (db == null || id == null) return null;
+        for (PlannedPayment p : db.plannedPayments) {
+            if (p != null && id.equals(p.id)) return p;
+        }
+        return null;
+    }
+
+    /** Upcoming first (by next due date), completed ones at the end. */
+    public static List<PlannedPayment> plannedSorted(WalletDb db) {
+        List<PlannedPayment> upcoming = new ArrayList<>();
+        List<PlannedPayment> done = new ArrayList<>();
+        if (db != null) {
+            for (PlannedPayment p : db.plannedPayments) if (p != null) {
+                (p.isCompleted ? done : upcoming).add(p);
+            }
+        }
+        Comparator<PlannedPayment> byDue = new Comparator<PlannedPayment>() {
+            @Override public int compare(PlannedPayment a, PlannedPayment b) {
+                String da = a.nextDueDate == null ? "" : a.nextDueDate;
+                String db2 = b.nextDueDate == null ? "" : b.nextDueDate;
+                return da.compareTo(db2);
+            }
+        };
+        Collections.sort(upcoming, byDue);
+        Collections.sort(done, byDue);
+        upcoming.addAll(done);
+        return upcoming;
+    }
+
+    /** Overdue = due date is in the past and not completed. Compares the
+     *  date part only, so a payment due today is never "overdue". */
+    public static boolean isOverdue(PlannedPayment p, String todayIso) {
+        if (p == null || p.isCompleted || p.nextDueDate == null || todayIso == null) {
+            return false;
+        }
+        return p.nextDueDate.substring(0, Math.min(10, p.nextDueDate.length()))
+                .compareTo(todayIso.substring(0, Math.min(10, todayIso.length()))) < 0;
+    }
+
+    /**
+     * Advance an ISO datetime by one recurrence period, mirroring the
+     * Flutter markPaid switch: daily +1d, weekly +7d, yearly +1y,
+     * monthly (and anything else) +1 month with the day clamped to the
+     * target month's length (Jan 31 -> Feb 28/29, then Feb 28 -> Mar 28).
+     */
+    public static String advanceDueDate(String iso, String period) {
+        java.time.LocalDateTime dt = parseIso(iso);
+        if (dt == null) return iso;
+        java.time.LocalDateTime next;
+        if ("daily".equals(period)) {
+            next = dt.plusDays(1);
+        } else if ("weekly".equals(period)) {
+            next = dt.plusDays(7);
+        } else if ("yearly".equals(period)) {
+            next = dt.plusYears(1); // java.time clamps Feb 29 -> Feb 28
+        } else { // "monthly" or null/unknown — Flutter's default branch
+            java.time.YearMonth ym = java.time.YearMonth.from(dt).plusMonths(1);
+            int day = Math.min(dt.getDayOfMonth(), ym.lengthOfMonth());
+            next = java.time.LocalDateTime.of(ym.getYear(), ym.getMonthValue(), day,
+                    dt.getHour(), dt.getMinute(), dt.getSecond());
+        }
+        return formatIso(next);
+    }
+
+    /**
+     * Shared post-payment / post-skip state machine (Flutter markPaid,
+     * minus the transaction): non-recurring completes; recurring
+     * advances the due date, bumps the occurrence counter and completes
+     * when the end condition is met (occurrences: counter passes the
+     * total; until_date: new due date is after the until date).
+     */
+    public static void advancePlanned(PlannedPayment p) {
+        if (p == null || p.isCompleted) return;
+        if (!p.isRecurring) {
+            p.isCompleted = true;
+            return;
+        }
+        p.nextDueDate = advanceDueDate(p.nextDueDate, p.period);
+        p.currentOccurrence += 1;
+        if ("occurrences".equals(p.endType) && p.totalOccurrences != null) {
+            if (p.currentOccurrence > p.totalOccurrences) p.isCompleted = true;
+        } else if ("until_date".equals(p.endType) && p.untilDate != null) {
+            if (p.nextDueDate != null && p.nextDueDate.compareTo(p.untilDate) > 0) {
+                p.isCompleted = true;
+            }
+        }
+    }
+
+    /**
+     * Mark a planned payment paid, Flutter-style: builds the expense
+     * transaction (dated now, note "Planned Payment: {name}", splits
+     * copied with FRESH unpaid members), applies its balance effect via
+     * addTransaction, stamps lastPaidDate, then advances/completes.
+     * Returns the created transaction.
+     */
+    public static Transaction markPlannedPaid(WalletDb db, PlannedPayment p,
+                                              String nowIso, String txId) {
+        if (db == null || p == null) return null;
+        Transaction t = new Transaction();
+        t.id = txId;
+        t.type = "expense";
+        t.amount = p.amount;
+        t.accountId = p.accountId;
+        t.categoryId = p.categoryId;
+        t.date = nowIso;
+        t.note = "Planned Payment: " + (p.name == null ? "" : p.name);
+        t.isSplit = p.isSplit && p.splits != null && !p.splits.isEmpty();
+        if (t.isSplit) {
+            int i = 0;
+            for (SplitMember s : p.splits) {
+                SplitMember copy = new SplitMember();
+                copy.id = txId + "_m" + (++i);
+                copy.name = s.name;
+                copy.amount = s.amount;
+                copy.isPaid = false;
+                t.splits.add(copy);
+            }
+        }
+        addTransaction(db, t);
+        p.lastPaidDate = nowIso;
+        advancePlanned(p);
+        return t;
+    }
+
+    /** Skip one occurrence: advance/complete exactly like paying, but no
+     *  transaction and no lastPaidDate. (Flutter has no Skip — small
+     *  native extra, kept on the same state machine for consistency.) */
+    public static void skipPlanned(PlannedPayment p) {
+        advancePlanned(p);
+    }
+
+    // ==================================================== Phase 3: split members
+
+    /** Split transactions (flag set and members present), newest first. */
+    public static List<Transaction> splitTransactions(WalletDb db) {
+        List<Transaction> out = new ArrayList<>();
+        if (db != null) {
+            for (Transaction t : db.transactions) {
+                if (t != null && t.isSplit && t.splits != null && !t.splits.isEmpty()) {
+                    out.add(t);
+                }
+            }
+        }
+        return recentTransactions(out, -1);
+    }
+
+    public static SplitMember splitMemberById(Transaction t, String memberId) {
+        if (t == null || t.splits == null || memberId == null) return null;
+        for (SplitMember s : t.splits) if (s != null && memberId.equals(s.id)) return s;
+        return null;
+    }
+
+    /**
+     * Mark a member paid (Flutter markSplitMemberPaid): flags the
+     * member, stamps the date + the account the money was received
+     * into, and CREDITS that account by the member's share.
+     */
+    public static boolean markSplitMemberPaid(WalletDb db, Transaction t,
+                                              String memberId, String paidDateIso,
+                                              String targetAccountId) {
+        SplitMember s = splitMemberById(t, memberId);
+        if (db == null || s == null || s.isPaid) return false;
+        s.isPaid = true;
+        s.paidDate = paidDateIso;
+        s.paidAccountId = targetAccountId;
+        Account acc = accountById(db.accounts, targetAccountId);
+        if (acc != null) acc.balance += s.amount;
+        return true;
+    }
+
+    /**
+     * Unmark a member (Flutter unmarkSplitMemberPaid): debits the
+     * recovery back out and clears the member. Deliberate consistency
+     * deviation: Flutter debits paidAccountId OR, when it is null,
+     * falls back to debiting the transaction's account — but a member
+     * paid with no recorded account never credited anything, so
+     * debiting on unmark would invent a loss. Native debits only a
+     * recorded recovery account.
+     */
+    public static boolean unmarkSplitMemberPaid(WalletDb db, Transaction t, String memberId) {
+        SplitMember s = splitMemberById(t, memberId);
+        if (db == null || s == null || !s.isPaid) return false;
+        if (s.paidAccountId != null) {
+            Account acc = accountById(db.accounts, s.paidAccountId);
+            if (acc != null) acc.balance -= s.amount;
+        }
+        s.isPaid = false;
+        s.paidDate = null;
+        s.paidAccountId = null;
+        return true;
+    }
+
+    /** Sum of member shares. */
+    public static double splitSum(List<SplitMember> members) {
+        double sum = 0;
+        if (members != null) for (SplitMember s : members) if (s != null) sum += s.amount;
+        return sum;
+    }
+
+    /**
+     * Why a split member list is not saveable for a transaction of
+     * totalAmount, or null when valid: at least one member, every name
+     * non-blank, every share > 0, and the shares summing to the total
+     * within 0.01. (Flutter never validates the sum — its model leaves
+     * your own share as the unstated remainder. Native validates
+     * because its member list INCLUDES "Me", so the shares must add up.)
+     */
+    public static String splitValidationError(List<SplitMember> members, double totalAmount) {
+        if (members == null || members.isEmpty()) return "Add at least one person to the split.";
+        for (SplitMember s : members) {
+            if (s == null || s.name == null || s.name.trim().isEmpty()) {
+                return "Every person in the split needs a name.";
+            }
+            if (s.amount <= 0) return "Every share must be more than zero.";
+        }
+        if (Math.abs(splitSum(members) - totalAmount) > 0.01) {
+            return "Shares add up to " + formatINR(splitSum(members))
+                    + " but the amount is " + formatINR(totalAmount)
+                    + ". Adjust the shares or tap Split Equally.";
+        }
+        return null;
+    }
+
+    /**
+     * Equal shares of a total across count people, to the paisa: each
+     * share is the total/count rounded to 2dp, and the LAST share takes
+     * the remainder so the shares always sum exactly to the total.
+     * (Flutter's equal split computes total/(friends + 1) per friend —
+     * "Me" counts as one person. Native's member list includes Me, so
+     * count = members.size().)
+     */
+    public static List<Double> equalSplit(double total, int count) {
+        List<Double> out = new ArrayList<>();
+        if (count <= 0) return out;
+        double each = Math.round((total / count) * 100.0) / 100.0;
+        double assigned = 0;
+        for (int i = 0; i < count - 1; i++) {
+            out.add(each);
+            assigned += each;
+        }
+        out.add(Math.round((total - assigned) * 100.0) / 100.0);
+        return out;
+    }
+
+    // ==================================================== Phase 3: debts & credits
+
+    public static DebtCredit debtById(WalletDb db, String id) {
+        if (db == null || id == null) return null;
+        for (DebtCredit d : db.debtCredits) if (d != null && id.equals(d.id)) return d;
+        return null;
+    }
+
+    private static String debtNoteSuffix(DebtCredit d) {
+        return d.notes != null && !d.notes.trim().isEmpty()
+                ? " (" + d.notes.trim() + ")" : "";
+    }
+
+    /** Note of the initial transaction Flutter creates for a debt/credit. */
+    public static String debtInitialNote(DebtCredit d) {
+        return ("lent".equals(d.direction)
+                ? "Lent to " + d.personName
+                : "Borrowed from " + d.personName) + debtNoteSuffix(d);
+    }
+
+    /** Note of the settlement transaction Flutter creates on close. */
+    public static String debtSettlementNote(DebtCredit d) {
+        return ("lent".equals(d.direction)
+                ? "Debt recovered from " + d.personName
+                : "Debt repaid to " + d.personName) + debtNoteSuffix(d);
+    }
+
+    private static String debtSettlementPrefix(DebtCredit d) {
+        return "lent".equals(d.direction)
+                ? "Debt recovered from " + d.personName
+                : "Debt repaid to " + d.personName;
+    }
+
+    /**
+     * The category a linked transaction may carry: Flutter only keeps
+     * the debt's category when its type matches the transaction's
+     * expected type (lent -> expense, borrowed -> income for the
+     * initial transaction; the reverse for settlement), else null.
+     */
+    public static String debtCategoryFor(WalletDb db, DebtCredit d, String txType) {
+        if (d == null || d.categoryId == null) return null;
+        Category c = categoryById(db.categories, d.categoryId);
+        return c != null && txType.equals(c.type) ? d.categoryId : null;
+    }
+
+    private static Transaction buildDebtTx(WalletDb db, DebtCredit d, String txId,
+                                           String type, String note, String dateIso) {
+        Transaction t = new Transaction();
+        t.id = txId;
+        t.type = type;
+        t.amount = d.amount;
+        t.accountId = d.accountId;
+        t.categoryId = debtCategoryFor(db, d, type);
+        t.date = dateIso;
+        t.note = note;
+        return t;
+    }
+
+    /**
+     * Create a debt/credit (Flutter addDebtCredit): when it affects the
+     * account, the initial transaction is created and linked —
+     * lent = expense out, borrowed = income in.
+     */
+    public static void createDebt(WalletDb db, DebtCredit d, String txId) {
+        if (db == null || d == null) return;
+        if (d.affectsAccount) {
+            String type = "lent".equals(d.direction) ? "expense" : "income";
+            Transaction t = buildDebtTx(db, d, txId, type, debtInitialNote(d), d.startDate);
+            addTransaction(db, t);
+            d.transactionId = txId;
+        }
+        db.debtCredits.add(d);
+    }
+
+    /**
+     * Find the settlement transaction: by stored id, else Flutter's
+     * legacy fallback (matching type + amount + note prefix) for
+     * records settled before settlementTransactionId was tracked.
+     */
+    public static Transaction findSettlementTx(WalletDb db, DebtCredit d) {
+        if (db == null || d == null) return null;
+        if (d.settlementTransactionId != null) {
+            Transaction t = transactionById(db, d.settlementTransactionId);
+            if (t != null) return t;
+        }
+        if (!"closed".equals(d.status)) return null;
+        String type = "lent".equals(d.direction) ? "income" : "expense";
+        String prefix = debtSettlementPrefix(d);
+        for (Transaction t : db.transactions) {
+            if (t != null && type.equals(t.type)
+                    && Math.abs(t.amount - d.amount) < 0.001
+                    && t.note != null && t.note.startsWith(prefix)) {
+                return t;
+            }
+        }
+        return null;
+    }
+
+    /** Reverse-and-forget both of a debt's balance effects (if any),
+     *  leaving the record itself in place. Used by delete and update. */
+    private static void stripDebtEffects(WalletDb db, DebtCredit d) {
+        if (d == null) return;
+        if (d.transactionId != null) {
+            Transaction t = transactionById(db, d.transactionId);
+            if (t != null) deleteTransaction(db, t.id);
+        } else if (d.affectsAccount && "active".equals(d.status)) {
+            // Imported/seeded record with no linked transaction: Flutter
+            // treats its effect as already inside the stored balance
+            // (_applyDebtCreditToBalances) and reverses it directly.
+            Account acc = accountById(db.accounts, d.accountId);
+            if (acc != null) {
+                if ("lent".equals(d.direction)) acc.balance += d.amount;
+                else if ("borrowed".equals(d.direction)) acc.balance -= d.amount;
+            }
+        }
+        Transaction settle = findSettlementTx(db, d);
+        if (settle != null) deleteTransaction(db, settle.id);
+    }
+
+    /**
+     * Settle/close (Flutter closeDebtCredit with affectBalance =
+     * the record's own affectsAccount, as the Flutter UI passes):
+     * creates the settlement transaction — lent = income "Debt
+     * recovered from …", borrowed = expense "Debt repaid to …" — into
+     * the record's account, links it, and closes the record.
+     */
+    public static boolean settleDebt(WalletDb db, DebtCredit d, String nowIso, String txId) {
+        if (db == null || d == null || "closed".equals(d.status)) return false;
+        if (d.affectsAccount) {
+            String type = "lent".equals(d.direction) ? "income" : "expense";
+            Transaction t = buildDebtTx(db, d, txId, type, debtSettlementNote(d), nowIso);
+            addTransaction(db, t);
+            d.settlementTransactionId = txId;
+        }
+        d.status = "closed";
+        return true;
+    }
+
+    /** Reopen (Flutter reopenDebtCredit): delete the settlement
+     *  transaction (reversing it) and go back to active. */
+    public static boolean reopenDebt(WalletDb db, DebtCredit d) {
+        if (db == null || d == null || !"closed".equals(d.status)) return false;
+        Transaction settle = findSettlementTx(db, d);
+        if (settle != null) deleteTransaction(db, settle.id);
+        d.settlementTransactionId = null;
+        d.status = "active";
+        return true;
+    }
+
+    /**
+     * Delete (Flutter deleteDebtCredit): the linked initial
+     * transaction and any settlement transaction are deleted (which
+     * reverses their balance effects), then the record is removed.
+     * Seed records without a linked transaction reverse their direct
+     * effect instead (see stripDebtEffects).
+     */
+    public static boolean deleteDebt(WalletDb db, DebtCredit d) {
+        if (db == null || d == null) return false;
+        stripDebtEffects(db, d);
+        return db.debtCredits.remove(d);
+    }
+
+    /**
+     * Edit a debt/credit by REBUILDING its linked transactions from
+     * the new field values. Flutter updates the initial transaction in
+     * place and leaves settlement handling to close/reopen; rebuilding
+     * reaches the same balances with one code path for every field
+     * combination (amount/person/account/direction/affects/status) and
+     * no half-updated links. `updated` carries the same id as the old
+     * record; its transactionId/settlementTransactionId are rewritten.
+     * settleDateIso is only used when a closed record has no previous
+     * settlement date to preserve.
+     */
+    public static boolean updateDebt(WalletDb db, DebtCredit updated,
+                                     String newTxId, String newSettleTxId,
+                                     String settleDateIso) {
+        if (db == null || updated == null || updated.id == null) return false;
+        int idx = -1;
+        DebtCredit old = null;
+        for (int i = 0; i < db.debtCredits.size(); i++) {
+            if (db.debtCredits.get(i) != null && updated.id.equals(db.debtCredits.get(i).id)) {
+                idx = i;
+                old = db.debtCredits.get(i);
+                break;
+            }
+        }
+        if (old == null) return false;
+        Transaction oldSettle = findSettlementTx(db, old);
+        String keepSettleDate = oldSettle != null ? oldSettle.date : settleDateIso;
+        stripDebtEffects(db, old);
+        db.debtCredits.set(idx, updated);
+        updated.transactionId = null;
+        updated.settlementTransactionId = null;
+        if (updated.affectsAccount) {
+            String type = "lent".equals(updated.direction) ? "expense" : "income";
+            Transaction t = buildDebtTx(db, updated, newTxId, type,
+                    debtInitialNote(updated), updated.startDate);
+            addTransaction(db, t);
+            updated.transactionId = newTxId;
+            if ("closed".equals(updated.status)) {
+                String stype = "lent".equals(updated.direction) ? "income" : "expense";
+                Transaction s = buildDebtTx(db, updated, newSettleTxId, stype,
+                        debtSettlementNote(updated), keepSettleDate);
+                addTransaction(db, s);
+                updated.settlementTransactionId = newSettleTxId;
+            }
+        }
+        return true;
+    }
+
+    /** Outstanding (active) totals per direction. */
+    public static double totalActiveDebt(List<DebtCredit> debts, String direction) {
+        double sum = 0;
+        if (debts != null) {
+            for (DebtCredit d : debts) {
+                if (d != null && direction.equals(d.direction)
+                        && "active".equals(d.status)) {
+                    sum += d.amount;
+                }
+            }
+        }
+        return sum;
+    }
+
+    // ==================================================== Phase 3: templates
+
+    public static Template templateById(WalletDb db, String id) {
+        if (db == null || id == null) return null;
+        for (Template t : db.templates) if (t != null && id.equals(t.id)) return t;
+        return null;
+    }
+
+    /** A draft transaction from a template (Flutter's AddTransactionSheet
+     *  prefill): every field copied, dated when used, never a split. */
+    public static Transaction draftFromTemplate(Template tpl, String txId, String dateIso) {
+        if (tpl == null) return null;
+        Transaction t = new Transaction();
+        t.id = txId;
+        t.type = tpl.type;
+        t.amount = tpl.amount;
+        t.accountId = tpl.accountId;
+        t.toAccountId = tpl.toAccountId;
+        t.categoryId = tpl.categoryId;
+        t.date = dateIso;
+        t.note = tpl.note;
+        t.isSplit = false;
+        return t;
+    }
+
+    // ==================================================== Phase 3: reminder maths
+
+    /**
+     * When the daily reminder should next fire: today at hour:minute,
+     * or tomorrow if that time has already passed (Flutter: strictly
+     * before now -> tomorrow; native uses "not after now" so an alarm
+     * is never scheduled in the past).
+     */
+    public static java.time.LocalDateTime nextDailyReminder(
+            java.time.LocalDateTime now, int hour, int minute) {
+        java.time.LocalDateTime candidate = now.toLocalDate().atTime(hour, minute);
+        return candidate.isAfter(now) ? candidate : candidate.plusDays(1);
+    }
+
+    /** Planned-payment reminder moment: the due DATE minus daysBefore,
+     *  at 09:00 (Flutter schedulePlannedPaymentReminders). */
+    public static java.time.LocalDateTime plannedReminderTime(
+            PlannedPayment p, int daysBefore) {
+        if (p == null || p.nextDueDate == null || p.nextDueDate.length() < 10) return null;
+        try {
+            java.time.LocalDate due = java.time.LocalDate.parse(p.nextDueDate.substring(0, 10));
+            return due.minusDays(daysBefore).atTime(9, 0);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // ------------------------------------------------------------- ISO helpers
+
+    static java.time.LocalDateTime parseIso(String iso) {
+        if (iso == null || iso.length() < 10) return null;
+        try {
+            String s = iso.length() >= 19 ? iso.substring(0, 19) : iso;
+            if (s.length() == 10) s = s + "T00:00:00";
+            return java.time.LocalDateTime.parse(s);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    static String formatIso(java.time.LocalDateTime dt) {
+        return dt.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS"));
+    }
+
+    /** Current moment as a backup-format ISO string (tests pass their own). */
+    public static String nowIso() {
+        return formatIso(java.time.LocalDateTime.now());
     }
 
     // ---------------------------------------------------------------- dates

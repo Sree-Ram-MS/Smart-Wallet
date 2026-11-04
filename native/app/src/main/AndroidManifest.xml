@@ -1,14 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.smartwallet.smart_wallet"
-    android:versionCode="4"
-    android:versionName="2.0.0-preview2">
+    android:versionCode="5"
+    android:versionName="2.0.0-preview3">
 
     <uses-sdk
         android:minSdkVersion="26"
         android:targetSdkVersion="34" />
 
-    <!-- Phase 1 + 2 are pure local: NO permissions at all. -->
+    <!-- Phase 3 adds exactly these three permissions, all for local
+         reminders: post notifications, schedule them exactly, and
+         reschedule after a reboot/app update. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:allowBackup="false"
@@ -35,5 +40,28 @@
         <activity android:name=".CategoriesActivity" android:exported="false" />
         <activity android:name=".CategoryEditActivity" android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- Phase 3 screens (internal only) -->
+        <activity android:name=".PlannedActivity" android:exported="false" />
+        <activity android:name=".PlannedEditActivity" android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".SplitsActivity" android:exported="false" />
+        <activity android:name=".DebtsActivity" android:exported="false" />
+        <activity android:name=".DebtEditActivity" android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".TemplatesActivity" android:exported="false" />
+        <activity android:name=".TemplateEditActivity" android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".SettingsActivity" android:exported="false" />
+
+        <!-- Phase 3 reminders -->
+        <receiver android:name=".NotifReceiver" android:exported="false" />
+        <receiver android:name=".BootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

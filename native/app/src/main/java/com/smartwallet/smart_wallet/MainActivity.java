@@ -54,11 +54,17 @@ public class MainActivity extends Activity {
     private static final String[] NAV_LABELS = {
             "Dashboard", "Transactions", "Accounts", "Config", "Planned",
             "Split Bills", "Debts", "Templates", "Import/Export", "Settings"};
-    // Nav indices that open a real Phase 2 screen (others = placeholder):
+    // Nav indices that open a real screen (Import/Export is still a
+    // placeholder until Phase 4):
     private static final int NAV_DASHBOARD = 0;
     private static final int NAV_TRANSACTIONS = 1;
     private static final int NAV_ACCOUNTS = 2;
     private static final int NAV_CONFIG = 3;
+    private static final int NAV_PLANNED = 4;
+    private static final int NAV_SPLITS = 5;
+    private static final int NAV_DEBTS = 6;
+    private static final int NAV_TEMPLATES = 7;
+    private static final int NAV_SETTINGS = 9;
 
     private Store store;
     private WalletDb db;
@@ -75,6 +81,11 @@ public class MainActivity extends Activity {
 
         store = new Store(this);
         db = store.db();
+
+        // Phase 3: reminders — ask for the Android 13+ notification
+        // permission and (re)schedule all alarms on app start.
+        NotifService.requestPermission(this);
+        NotifService.sync(this);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -185,6 +196,26 @@ public class MainActivity extends Activity {
             startActivity(new Intent(this, CategoriesActivity.class));
             return;
         }
+        if (idx == NAV_PLANNED) {
+            startActivity(new Intent(this, PlannedActivity.class));
+            return;
+        }
+        if (idx == NAV_SPLITS) {
+            startActivity(new Intent(this, SplitsActivity.class));
+            return;
+        }
+        if (idx == NAV_DEBTS) {
+            startActivity(new Intent(this, DebtsActivity.class));
+            return;
+        }
+        if (idx == NAV_TEMPLATES) {
+            startActivity(new Intent(this, TemplatesActivity.class));
+            return;
+        }
+        if (idx == NAV_SETTINGS) {
+            startActivity(new Intent(this, SettingsActivity.class));
+            return;
+        }
         selectedNav = idx;
         styleNav();
         if (idx == NAV_DASHBOARD) {
@@ -216,9 +247,9 @@ public class MainActivity extends Activity {
         title.setLayoutParams(tlp);
         page.addView(title);
 
-        TextView sub = tv("Coming in a later phase.\nDashboard, Transactions, Accounts and "
-                + "Categories are live — this section is on the roadmap in the "
-                + "project README.", 13, SECONDARY, false);
+        TextView sub = tv("Backup import/export arrives in Phase 4.\nEverything else in the "
+                + "nav is live — see the roadmap in the project README.",
+                13, SECONDARY, false);
         sub.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);

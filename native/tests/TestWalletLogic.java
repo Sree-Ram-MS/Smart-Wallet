@@ -316,6 +316,380 @@ public class TestWalletLogic {
                     WalletLogic.categoriesForPicker(cats, "income").size() == 1);
         }
 
+        // ================= Phase 3: planned advance =================
+        eqS("advance daily", "2026-09-16T09:00:00.000",
+                WalletLogic.advanceDueDate("2026-09-15T09:00:00.000", "daily"));
+        eqS("advance weekly", "2026-09-22T09:00:00.000",
+                WalletLogic.advanceDueDate("2026-09-15T09:00:00.000", "weekly"));
+        eqS("advance monthly", "2026-10-15T09:00:00.000",
+                WalletLogic.advanceDueDate("2026-09-15T09:00:00.000", "monthly"));
+        eqS("advance monthly Jan31 clamp leap", "2028-02-29T09:00:00.000",
+                WalletLogic.advanceDueDate("2028-01-31T09:00:00.000", "monthly"));
+        eqS("advance monthly Jan31 clamp non-leap", "2026-02-28T09:00:00.000",
+                WalletLogic.advanceDueDate("2026-01-31T09:00:00.000", "monthly"));
+        eqS("advance monthly Feb28 stays 28 (Flutter drift)", "2026-03-28T09:00:00.000",
+                WalletLogic.advanceDueDate("2026-02-28T09:00:00.000", "monthly"));
+        eqS("advance monthly year rollover", "2027-01-15T09:00:00.000",
+                WalletLogic.advanceDueDate("2026-12-15T09:00:00.000", "monthly"));
+        eqS("advance yearly", "2027-09-15T09:00:00.000",
+                WalletLogic.advanceDueDate("2026-09-15T09:00:00.000", "yearly"));
+        eqS("advance yearly Feb29 clamp", "2029-02-28T09:00:00.000",
+                WalletLogic.advanceDueDate("2028-02-29T09:00:00.000", "yearly"));
+        eqS("advance null period = monthly", "2026-10-15T09:00:00.000",
+                WalletLogic.advanceDueDate("2026-09-15T09:00:00.000", null));
+
+        // ================= Phase 3: planned mark-paid / skip state machine ======
+        {
+            WalletDb db = new WalletDb();
+            db.accounts.add(acc("acc_bank", 10000, true));
+            PlannedPayment p = new PlannedPayment();
+            p.id = "plan1"; p.name = "Netflix"; p.amount = 649;
+            p.accountId = "acc_bank"; p.categoryId = "cat_bills";
+            p.isRecurring = true; p.period = "monthly";
+            p.nextDueDate = "2026-09-15T09:00:00.000";
+            p.endType = "never"; p.currentOccurrence = 1;
+            db.plannedPayments.add(p);
+
+            Transaction made = WalletLogic.markPlannedPaid(
+                    db, p, "2026-09-15T10:30:00.000", "tx_pay1");
+            check("markPaid creates tx", made != null);
+            eqS("markPaid tx type", "expense", made.type);
+            eqS("markPaid tx note", "Planned Payment: Netflix", made.note);
+            eqS("markPaid tx date is now", "2026-09-15T10:30:00.000", made.date);
+            eqS("markPaid tx category", "cat_bills", made.categoryId);
+            eqD("markPaid balance effect", 9351, db.accounts.get(0).balance);
+            eqS("markPaid lastPaidDate", "2026-09-15T10:30:00.000", p.lastPaidDate);
+            eqS("markPaid advances due", "2026-10-15T09:00:00.000", p.nextDueDate);
+            check("markPaid occurrence bumped", p.currentOccurrence == 2);
+            check("markPaid not completed (never)", !p.isCompleted);
+            check("markPaid tx stored", WalletLogic.transactionById(db, "tx_pay1") == made);
+        }
+        {
+            // occurrences end: total 2 -> completes on the 2nd payment
+            WalletDb db = new WalletDb();
+            db.accounts.add(acc("acc_bank", 10000, true));
+            PlannedPayment p = new PlannedPayment();
+            p.id = "plan2"; p.name = "EMI"; p.amount = 500; p.accountId = "acc_bank";
+            p.isRecurring = true; p.period = "monthly";
+            p.nextDueDate = "2026-09-01T09:00:00.000";
+            p.endType = "occurrences"; p.totalOccurrences = 2; p.currentOccurrence = 1;
+            db.plannedPayments.add(p);
+            WalletLogic.markPlannedPaid(db, p, "2026-09-01T09:00:00.000", "t1");
+            check("occ 1 of 2 not completed", !p.isCompleted && p.currentOccurrence == 2);
+            WalletLogic.markPlannedPaid(db, p, "2026-10-01T09:00:00.000", "t2");
+            check("occ 2 of 2 completed", p.isCompleted && p.currentOccurrence == 3);
+            eqD("occ both payments applied", 9000, db.accounts.get(0).balance);
+
+            // until_date end: completing when the NEXT due passes the until date
+            PlannedPayment q = new PlannedPayment();
+            q.id = "plan3"; q.name = "Course"; q.amount = 100; q.accountId = "acc_bank";
+            q.isRecurring = true; q.period = "monthly";
+            q.nextDueDate = "2026-09-10T09:00:00.000";
+            q.endType = "until_date"; q.untilDate = "2026-10-10T09:00:00.000";
+            q.currentOccurrence = 1;
+            db.plannedPayments.add(q);
+            WalletLogic.markPlannedPaid(db, q, "2026-09-10T09:00:00.000", "t3");
+            check("until: next due == until not completed", !q.isCompleted);
+            WalletLogic.markPlannedPaid(db, q, "2026-10-10T09:00:00.000", "t4");
+            check("until: next due after until completed", q.isCompleted);
+
+            // non-recurring completes on pay; skip advances without a tx
+            PlannedPayment r = new PlannedPayment();
+            r.id = "plan4"; r.name = "One-off"; r.amount = 250; r.accountId = "acc_bank";
+            r.isRecurring = false; r.nextDueDate = "2026-09-05T09:00:00.000";
+            r.currentOccurrence = 1;
+            db.plannedPayments.add(r);
+            int txCount = db.transactions.size();
+            WalletLogic.markPlannedPaid(db, r, "2026-09-05T09:00:00.000", "t5");
+            check("non-recurring completed on pay", r.isCompleted);
+            check("non-recurring pay recorded tx", db.transactions.size() == txCount + 1);
+
+            PlannedPayment s = new PlannedPayment();
+            s.id = "plan5"; s.name = "Gym"; s.amount = 1000; s.accountId = "acc_bank";
+            s.isRecurring = true; s.period = "monthly";
+            s.nextDueDate = "2026-09-01T09:00:00.000"; s.currentOccurrence = 1;
+            db.plannedPayments.add(s);
+            double balBefore = db.accounts.get(0).balance;
+            int txBefore = db.transactions.size();
+            WalletLogic.skipPlanned(s);
+            eqS("skip advances due", "2026-10-01T09:00:00.000", s.nextDueDate);
+            check("skip bumps occurrence", s.currentOccurrence == 2);
+            check("skip makes no tx", db.transactions.size() == txBefore);
+            eqD("skip no balance effect", balBefore, db.accounts.get(0).balance);
+            check("skip leaves lastPaidDate null", s.lastPaidDate == null);
+
+            // split planned payment: created tx carries FRESH unpaid members
+            PlannedPayment sp = new PlannedPayment();
+            sp.id = "plan6"; sp.name = "Family Plan"; sp.amount = 900; sp.accountId = "acc_bank";
+            sp.isRecurring = false; sp.nextDueDate = "2026-09-01T09:00:00.000";
+            sp.isSplit = true;
+            sp.splits = new ArrayList<>(Arrays.asList(
+                    new SplitMember("m1", "Me", 300, true),
+                    new SplitMember("m2", "Dad", 600, true)));
+            db.plannedPayments.add(sp);
+            Transaction stx = WalletLogic.markPlannedPaid(
+                    db, sp, "2026-09-01T09:00:00.000", "tsp");
+            check("split pay tx is split", stx.isSplit && stx.splits.size() == 2);
+            check("split pay members fresh unpaid",
+                    !stx.splits.get(0).isPaid && !stx.splits.get(1).isPaid
+                            && stx.splits.get(0).paidAccountId == null);
+            check("split pay member ids fresh", !"m1".equals(stx.splits.get(0).id));
+            eqD("split pay member amounts copied", 600, stx.splits.get(1).amount);
+        }
+
+        // ================= Phase 3: split member paid/unpaid balance effects ====
+        {
+            WalletDb db = new WalletDb();
+            db.accounts.add(acc("acc_card", 0, true));
+            db.accounts.add(acc("acc_bank", 1000, true));
+            Transaction t = tx("sp1", "expense", 2400, "2026-09-03T20:30:00.000");
+            t.accountId = "acc_card"; t.isSplit = true;
+            t.splits = new ArrayList<>(Arrays.asList(
+                    new SplitMember("mm", "Me", 800, true),
+                    new SplitMember("mr", "Rahul", 800, false),
+                    new SplitMember("mk", "Karthik", 800, false)));
+            WalletLogic.addTransaction(db, t);
+            eqD("split expense applied in full", -2400, db.accounts.get(0).balance);
+            eqD("no recovery yet (Me has no paidAccount)", 1000, db.accounts.get(1).balance);
+
+            check("mark member paid ok", WalletLogic.markSplitMemberPaid(
+                    db, t, "mr", "2026-09-04T10:00:00.000", "acc_bank"));
+            eqD("mark paid credits recovery account", 1800, db.accounts.get(1).balance);
+            check("mark paid flags member", t.splits.get(1).isPaid
+                    && "acc_bank".equals(t.splits.get(1).paidAccountId)
+                    && "2026-09-04T10:00:00.000".equals(t.splits.get(1).paidDate));
+            check("double mark rejected", !WalletLogic.markSplitMemberPaid(
+                    db, t, "mr", "2026-09-04T10:00:00.000", "acc_bank"));
+            eqD("double mark no double credit", 1800, db.accounts.get(1).balance);
+
+            check("unmark ok", WalletLogic.unmarkSplitMemberPaid(db, t, "mr"));
+            eqD("unmark debits recovery back", 1000, db.accounts.get(1).balance);
+            check("unmark clears member", !t.splits.get(1).isPaid
+                    && t.splits.get(1).paidAccountId == null
+                    && t.splits.get(1).paidDate == null);
+
+            // unmarking a member paid WITHOUT a recorded account moves nothing
+            check("unmark Me ok", WalletLogic.unmarkSplitMemberPaid(db, t, "mm"));
+            eqD("unmark Me (no account) debits nothing", -2400, db.accounts.get(0).balance);
+            eqD("unmark Me bank untouched", 1000, db.accounts.get(1).balance);
+
+            // deleting the whole split tx reverses expense AND live recoveries
+            WalletLogic.markSplitMemberPaid(db, t, "mk", "2026-09-05T10:00:00.000", "acc_bank");
+            eqD("second recovery credited", 1800, db.accounts.get(1).balance);
+            WalletLogic.deleteTransaction(db, "sp1");
+            eqD("delete split tx restores payer", 0, db.accounts.get(0).balance);
+            eqD("delete split tx reverses recovery", 1000, db.accounts.get(1).balance);
+        }
+
+        // ================= Phase 3: split validation + equal split ==============
+        {
+            List<SplitMember> ok = Arrays.asList(
+                    new SplitMember("1", "Me", 800, true),
+                    new SplitMember("2", "Rahul", 800, false),
+                    new SplitMember("3", "Karthik", 800.004, false));
+            check("split sum within a paisa valid",
+                    WalletLogic.splitValidationError(ok, 2400) == null);
+            List<SplitMember> short_ = Arrays.asList(
+                    new SplitMember("1", "Me", 800, true),
+                    new SplitMember("2", "Rahul", 800, false));
+            check("split sum short rejected",
+                    WalletLogic.splitValidationError(short_, 2400) != null);
+            List<SplitMember> noName = Arrays.asList(
+                    new SplitMember("1", "  ", 2400, false));
+            check("split blank name rejected",
+                    WalletLogic.splitValidationError(noName, 2400) != null);
+            List<SplitMember> zeroAmt = Arrays.asList(
+                    new SplitMember("1", "Me", 2400, false),
+                    new SplitMember("2", "Free", 0, false));
+            check("split zero share rejected",
+                    WalletLogic.splitValidationError(zeroAmt, 2400) != null);
+            check("split empty rejected",
+                    WalletLogic.splitValidationError(new ArrayList<SplitMember>(), 2400) != null);
+
+            List<Double> eq3 = WalletLogic.equalSplit(2400, 3);
+            eqD("equal split 2400/3 each", 800, eq3.get(0));
+            eqD("equal split 2400/3 sums", 2400, eq3.get(0) + eq3.get(1) + eq3.get(2));
+            List<Double> eqOdd = WalletLogic.equalSplit(100, 3);
+            eqD("equal split 100/3 first", 33.33, eqOdd.get(0));
+            eqD("equal split 100/3 last takes remainder", 33.34, eqOdd.get(2));
+            eqD("equal split 100/3 sums exactly", 100,
+                    eqOdd.get(0) + eqOdd.get(1) + eqOdd.get(2));
+            check("equal split count 0 empty", WalletLogic.equalSplit(100, 0).isEmpty());
+        }
+
+        // ================= Phase 3: debts lifecycle =============================
+        {
+            WalletDb db = new WalletDb();
+            db.accounts.add(acc("acc_bank", 10000, true));
+            Category debtCat = new Category("cat_debt", "Loans Given", "expense");
+            db.categories.add(debtCat);
+
+            // create LENT with affectsAccount -> expense tx linked
+            DebtCredit lent = new DebtCredit();
+            lent.id = "d1"; lent.direction = "lent"; lent.personName = "Alex";
+            lent.amount = 5000; lent.accountId = "acc_bank";
+            lent.categoryId = "cat_debt"; lent.startDate = "2026-09-02T16:00:00.000";
+            lent.notes = "Car repair"; lent.affectsAccount = true; lent.status = "active";
+            WalletLogic.createDebt(db, lent, "tx_d1");
+            eqD("lent create: money out", 5000, db.accounts.get(0).balance);
+            eqS("lent linked tx id", "tx_d1", lent.transactionId);
+            Transaction ltx = WalletLogic.transactionById(db, "tx_d1");
+            eqS("lent tx type", "expense", ltx.type);
+            eqS("lent tx note", "Lent to Alex (Car repair)", ltx.note);
+            eqS("lent tx category kept (type matches)", "cat_debt", ltx.categoryId);
+            eqS("lent tx date is start date", "2026-09-02T16:00:00.000", ltx.date);
+
+            // settle LENT -> income back
+            check("settle lent ok", WalletLogic.settleDebt(
+                    db, lent, "2026-09-20T10:00:00.000", "tx_s1"));
+            eqD("lent settle: money back", 10000, db.accounts.get(0).balance);
+            eqS("lent status closed", "closed", lent.status);
+            Transaction stx = WalletLogic.transactionById(db, "tx_s1");
+            eqS("settle tx type income", "income", stx.type);
+            eqS("settle tx note", "Debt recovered from Alex (Car repair)", stx.note);
+            check("settle tx category dropped (type mismatch)",
+                    stx.categoryId == null);
+            check("double settle rejected", !WalletLogic.settleDebt(
+                    db, lent, "2026-09-21T10:00:00.000", "tx_sX"));
+
+            // reopen LENT -> settlement reversed
+            check("reopen ok", WalletLogic.reopenDebt(db, lent));
+            eqD("reopen reverses settlement", 5000, db.accounts.get(0).balance);
+            eqS("reopen status active", "active", lent.status);
+            check("settlement tx gone", WalletLogic.transactionById(db, "tx_s1") == null);
+            check("initial tx still there", WalletLogic.transactionById(db, "tx_d1") != null);
+
+            // delete active LENT -> initial reversed, record gone
+            check("delete lent ok", WalletLogic.deleteDebt(db, lent));
+            eqD("delete lent restores balance", 10000, db.accounts.get(0).balance);
+            check("delete lent removes record", db.debtCredits.isEmpty());
+            check("delete lent removes tx", db.transactions.isEmpty());
+
+            // BORROWED full cycle
+            DebtCredit bor = new DebtCredit();
+            bor.id = "d2"; bor.direction = "borrowed"; bor.personName = "Uncle David";
+            bor.amount = 10000; bor.accountId = "acc_bank";
+            bor.startDate = "2026-09-01T12:00:00.000"; bor.affectsAccount = true;
+            bor.status = "active";
+            WalletLogic.createDebt(db, bor, "tx_d2");
+            eqD("borrowed create: money in", 20000, db.accounts.get(0).balance);
+            WalletLogic.settleDebt(db, bor, "2026-10-01T10:00:00.000", "tx_s2");
+            eqD("borrowed settle: money out", 10000, db.accounts.get(0).balance);
+            // delete while CLOSED removes both txs, balance unchanged net
+            WalletLogic.deleteDebt(db, bor);
+            eqD("delete closed borrowed nets to start", 10000, db.accounts.get(0).balance);
+            check("delete closed borrowed clears txs", db.transactions.isEmpty());
+
+            // affectsAccount = false: nothing moves, ever
+            DebtCredit hist = new DebtCredit();
+            hist.id = "d3"; hist.direction = "lent"; hist.personName = "Old Pal";
+            hist.amount = 700; hist.accountId = "acc_bank";
+            hist.startDate = "2026-08-01T10:00:00.000"; hist.affectsAccount = false;
+            hist.status = "active";
+            WalletLogic.createDebt(db, hist, "tx_d3");
+            eqD("historical create moves nothing", 10000, db.accounts.get(0).balance);
+            check("historical has no tx", db.transactions.isEmpty()
+                    && hist.transactionId == null);
+            WalletLogic.settleDebt(db, hist, "2026-09-01T10:00:00.000", "tx_s3");
+            eqD("historical settle moves nothing", 10000, db.accounts.get(0).balance);
+            check("historical settle makes no tx", db.transactions.isEmpty());
+            WalletLogic.deleteDebt(db, hist);
+            eqD("historical delete moves nothing", 10000, db.accounts.get(0).balance);
+
+            // seed-style record: affectsAccount, active, NO linked tx (direct effect)
+            DebtCredit seed = new DebtCredit();
+            seed.id = "d4"; seed.direction = "lent"; seed.personName = "Seed";
+            seed.amount = 5000; seed.accountId = "acc_bank";
+            seed.startDate = "2026-09-02T16:00:00.000"; seed.affectsAccount = true;
+            seed.status = "active"; // balance 10000 already reflects the -5000 in-file
+            db.debtCredits.add(seed);
+            WalletLogic.deleteDebt(db, seed);
+            eqD("seed delete reverses direct effect", 15000, db.accounts.get(0).balance);
+
+            // edit rebuild: change amount 5000 -> 6000 on a live lent debt
+            DebtCredit ed = new DebtCredit();
+            ed.id = "d5"; ed.direction = "lent"; ed.personName = "Maria";
+            ed.amount = 5000; ed.accountId = "acc_bank";
+            ed.startDate = "2026-09-03T10:00:00.000"; ed.affectsAccount = true;
+            ed.status = "active";
+            db.accounts.get(0).balance = 15000;
+            WalletLogic.createDebt(db, ed, "tx_d5");
+            eqD("edit setup balance", 10000, db.accounts.get(0).balance);
+            DebtCredit edNew = new DebtCredit();
+            edNew.id = "d5"; edNew.direction = "lent"; edNew.personName = "Maria";
+            edNew.amount = 6000; edNew.accountId = "acc_bank";
+            edNew.startDate = "2026-09-03T10:00:00.000"; edNew.affectsAccount = true;
+            edNew.status = "active";
+            check("update debt ok", WalletLogic.updateDebt(
+                    db, edNew, "tx_d5b", "tx_s5b", "2026-09-10T10:00:00.000"));
+            eqD("edit amount rebuild nets -6000", 9000, db.accounts.get(0).balance);
+            eqS("edit relinks tx", "tx_d5b", edNew.transactionId);
+            check("edit removed old tx", WalletLogic.transactionById(db, "tx_d5") == null);
+            // toggling affectsAccount OFF in an edit removes the effect entirely
+            DebtCredit edOff = new DebtCredit();
+            edOff.id = "d5"; edOff.direction = "lent"; edOff.personName = "Maria";
+            edOff.amount = 6000; edOff.accountId = "acc_bank";
+            edOff.startDate = "2026-09-03T10:00:00.000"; edOff.affectsAccount = false;
+            edOff.status = "active";
+            WalletLogic.updateDebt(db, edOff, "tx_d5c", "tx_s5c", "2026-09-10T10:00:00.000");
+            eqD("edit affects OFF restores balance", 15000, db.accounts.get(0).balance);
+            check("edit affects OFF leaves no tx", db.transactions.isEmpty());
+
+            eqD("total active lent (edited record still active)", 6000,
+                    WalletLogic.totalActiveDebt(db.debtCredits, "lent"));
+            DebtCredit act = new DebtCredit();
+            act.id = "d6"; act.direction = "borrowed"; act.personName = "Bank";
+            act.amount = 2500; act.accountId = "acc_bank"; act.status = "active";
+            db.debtCredits.add(act);
+            eqD("total active borrowed", 2500,
+                    WalletLogic.totalActiveDebt(db.debtCredits, "borrowed"));
+        }
+
+        // ================= Phase 3: templates ===================================
+        {
+            com.smartwallet.smart_wallet.Template tpl =
+                    new com.smartwallet.smart_wallet.Template();
+            tpl.id = "tm1"; tpl.name = "Coffee"; tpl.type = "expense";
+            tpl.amount = 40; tpl.accountId = "acc_cash";
+            tpl.categoryId = "cat_food"; tpl.note = "Daily coffee";
+            WalletDb db = new WalletDb();
+            db.templates.add(tpl);
+            check("template by id", WalletLogic.templateById(db, "tm1") == tpl);
+            Transaction draft = WalletLogic.draftFromTemplate(
+                    tpl, "tx_new", "2026-11-04T08:00:00.000");
+            eqS("draft type", "expense", draft.type);
+            eqD("draft amount", 40, draft.amount);
+            eqS("draft account", "acc_cash", draft.accountId);
+            eqS("draft category", "cat_food", draft.categoryId);
+            eqS("draft note", "Daily coffee", draft.note);
+            eqS("draft date is use-date", "2026-11-04T08:00:00.000", draft.date);
+            check("draft not split", !draft.isSplit);
+            com.smartwallet.smart_wallet.Template tr =
+                    new com.smartwallet.smart_wallet.Template();
+            tr.type = "transfer"; tr.amount = 1000; tr.accountId = "a1";
+            tr.toAccountId = "a2"; tr.note = "Move";
+            Transaction td = WalletLogic.draftFromTemplate(tr, "tx2", "2026-11-04T08:00:00.000");
+            eqS("draft transfer keeps to-account", "a2", td.toAccountId);
+        }
+
+        // ================= Phase 3: reminder maths ==============================
+        {
+            PlannedPayment rp = new PlannedPayment();
+            rp.nextDueDate = "2026-09-15T09:00:00.000";
+            eqS("planned reminder 2 days before at 9am", "2026-09-13T09:00",
+                    WalletLogic.plannedReminderTime(rp, 2).toString());
+            eqS("planned reminder 0 days = due day 9am", "2026-09-15T09:00",
+                    WalletLogic.plannedReminderTime(rp, 0).toString());
+            java.time.LocalDateTime morning = java.time.LocalDateTime.of(2026, 11, 4, 8, 0);
+            eqS("daily reminder later today", "2026-11-04T20:00",
+                    WalletLogic.nextDailyReminder(morning, 20, 0).toString());
+            java.time.LocalDateTime night = java.time.LocalDateTime.of(2026, 11, 4, 21, 30);
+            eqS("daily reminder passed -> tomorrow", "2026-11-05T20:00",
+                    WalletLogic.nextDailyReminder(night, 20, 0).toString());
+            check("planned sorted: upcoming by due, completed last",
+                    WalletLogic.plannedSorted(new WalletDb()).isEmpty());
+        }
+
         System.out.println("---");
         System.out.println(checks + " checks, " + failures + " failures");
         System.out.println(failures == 0 ? "ALL TESTS PASSED" : failures + " FAILURES");

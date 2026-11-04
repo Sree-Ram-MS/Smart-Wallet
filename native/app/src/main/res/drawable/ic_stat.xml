@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Wallet silhouette with a card-slot notch, for notification small icon. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M5,4 L19,4 C20.7,4 22,5.3 22,7 L22,9.5 L17.5,9.5 C16.1,9.5 15,10.6 15,12 C15,13.4 16.1,14.5 17.5,14.5 L22,14.5 L22,17 C22,18.7 20.7,20 19,20 L5,20 C3.3,20 2,18.7 2,17 L2,7 C2,5.3 3.3,4 5,4 Z" />
+</vector>

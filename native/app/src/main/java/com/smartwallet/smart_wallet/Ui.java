@@ -80,6 +80,14 @@ public final class Ui {
         return bg;
     }
 
+    /** Filled oval background (avatar / icon discs). */
+    public static GradientDrawable circle(int color, Context c) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(color);
+        return bg;
+    }
+
     public static LinearLayout card(Context c, int color) {
         LinearLayout card = new LinearLayout(c);
         card.setOrientation(LinearLayout.VERTICAL);

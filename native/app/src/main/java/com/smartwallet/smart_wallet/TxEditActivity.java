@@ -5,13 +5,14 @@ import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.content.DialogInterface;
 import android.os.Bundle;
-import android.text.InputType;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CompoundButton;
 import android.widget.DatePicker;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -23,42 +24,54 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Phase 2: add / edit / delete a transaction.
+ * Phase 2/3: add / edit / delete one transaction.
  *
- * Balance effects go through WalletLogic only (apply/reverse), never by
- * poking Account.balance here. Date is stored as an ISO-8601 string, the
- * same format the Flutter app uses.
+ * All balance effects go through WalletLogic.addTransaction /
+ * updateTransaction / deleteTransaction, so the math is JVM-tested.
+ * The edited record is never mutated in place (a fresh Transaction is
+ * built from the form); updateTransaction reverses the old record
+ * (including split recoveries) and applies the new one.
  *
- * SPLIT DECISION (Phase 2): split transactions are READ-ONLY here.
- * Opening one shows its split breakdown and a clear message; Save is
- * not offered, so its splits can never be silently destroyed by an
- * edit. Split editing arrives in Phase 3. Deleting a split transaction
- * IS allowed (it is an explicit action, confirmed in a dialog that
- * names the split) and reverses the full amount via WalletLogic.
+ * Phase 3 changes:
+ *  - Split EDITING replaces the Phase 2 read-only block: a members
+ *    editor (SplitEditor) with add/remove, Split Equally and
+ *    sum-to-total validation. Paid state of existing members is
+ *    preserved across edits so recoveries stay consistent.
+ *  - Templates: EXTRA_TEMPLATE_ID opens the form prefilled from a
+ *    template (via WalletLogic.draftFromTemplate); saving creates a
+ *    normal transaction.
+ *  - EXTRA_START_SPLIT opens a new expense with the split switch on
+ *    (the Split Bills screen's + action).
  */
 public class TxEditActivity extends Activity {
 
     public static final String EXTRA_TX_ID = "tx_id";
+    public static final String EXTRA_TEMPLATE_ID = "template_id";
+    public static final String EXTRA_START_SPLIT = "start_split";
 
     private Store store;
     private WalletDb db;
-    private Transaction editing; // null = adding new
+    private Transaction editing;   // stored record being edited; null when adding
+    private Template usedTemplate; // non-null when opened from a template
 
     private String type = "expense";
-    private TextView[] typeChips;
     private LinearLayout typeRow;
     private EditText amountInput;
     private Spinner accountSpinner;
     private LinearLayout toBox;
     private Spinner toAccountSpinner;
-    private LinearLayout categoryBox;
     private Spinner categorySpinner;
     private Button dateButton;
-    private EditText noteInput;
     private LocalDate pickedDate;
+    private LocalTime pickedTime = LocalTime.of(12, 0);
+    private EditText noteInput;
+    private LinearLayout splitSection;
+    private Switch splitSwitch;
+    private LinearLayout splitBox;
+    private SplitEditor splitEditor;
 
     private List<Account> accountChoices = new ArrayList<>();
-    private List<Category> categoryChoices = new ArrayList<>();
+    private List<Category> categoryChoices = new ArrayList<>(); // entry 0 = null "(none)"
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -68,11 +81,27 @@ public class TxEditActivity extends Activity {
 
         String txId = getIntent() != null ? getIntent().getStringExtra(EXTRA_TX_ID) : null;
         editing = txId != null ? WalletLogic.transactionById(db, txId) : null;
-        boolean isSplit = editing != null && (editing.isSplit
-                || (editing.splits != null && !editing.splits.isEmpty()));
+
+        // "seed" pre-fills the form: the stored record when editing, a
+        // template draft when adding from a template, else null.
+        Transaction seed = editing;
+        if (seed == null && getIntent() != null) {
+            String tplId = getIntent().getStringExtra(EXTRA_TEMPLATE_ID);
+            if (tplId != null) {
+                usedTemplate = WalletLogic.templateById(db, tplId);
+                if (usedTemplate != null) {
+                    seed = WalletLogic.draftFromTemplate(usedTemplate,
+                            "tx_" + System.currentTimeMillis(), WalletLogic.nowIso());
+                }
+            }
+        }
+        boolean startSplit = editing == null && usedTemplate == null && getIntent() != null
+                && getIntent().getBooleanExtra(EXTRA_START_SPLIT, false);
 
         LinearLayout root = Ui.page(this,
-                editing == null ? "Add Transaction" : "Edit Transaction", null);
+                editing != null ? "Edit Transaction"
+                        : usedTemplate != null ? "New from Template" : "Add Transaction",
+                null);
         android.widget.ScrollView scroll = Ui.scrollBody(this, root);
         LinearLayout body = (LinearLayout) scroll.getChildAt(0);
         setContentView(root);
@@ -83,28 +112,19 @@ public class TxEditActivity extends Activity {
             return;
         }
 
-        if (editing != null) {
-            type = editing.type != null ? editing.type : "expense";
-            try {
-                pickedDate = LocalDate.parse(editing.date.substring(0, 10));
-            } catch (Exception e) {
-                pickedDate = LocalDate.now();
-            }
+        // Form state.
+        if (seed != null) {
+            type = seed.type;
+            pickedDate = parseDate(seed.date, LocalDate.now());
+            pickedTime = parseTime(seed.date);
         } else {
             pickedDate = LocalDate.now();
+            if (getIntent() != null) {
+                String preset = getIntent().getStringExtra("preset_type");
+                if ("income".equals(preset) || "transfer".equals(preset)) type = preset;
+            }
         }
 
-        if (isSplit) {
-            buildSplitNotice(body, editing);
-            Button del = Ui.dangerButton(this, "Delete this split transaction");
-            del.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) { confirmDelete(editing, true); }
-            });
-            body.addView(del);
-            return;
-        }
-
-        // ---- type chips
         body.addView(Ui.label(this, "TYPE"));
         typeRow = new LinearLayout(this);
         typeRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -112,20 +132,18 @@ public class TxEditActivity extends Activity {
         body.addView(typeRow);
         renderTypeChips();
 
-        // ---- amount
         body.addView(Ui.label(this, "AMOUNT (₹)"));
-        amountInput = Ui.input(this, "0", editing != null ? trimNum(editing.amount) : "");
-        amountInput.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        amountInput = Ui.input(this, "0", seed != null ? fmt(seed.amount) : "");
+        amountInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER
+                | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
         body.addView(amountInput);
 
-        // ---- account
-        body.addView(Ui.label(this, "transfer".equals(type) ? "FROM ACCOUNT" : "ACCOUNT"));
+        body.addView(Ui.label(this, "ACCOUNT"));
         accountSpinner = new Spinner(this);
         accountSpinner.setBackground(Ui.rounded(Ui.CARD, 12, this));
         accountSpinner.setLayoutParams(Ui.lpTop(this, 6));
         body.addView(accountSpinner);
 
-        // ---- to account (transfer only)
         toBox = new LinearLayout(this);
         toBox.setOrientation(LinearLayout.VERTICAL);
         toBox.addView(Ui.label(this, "TO ACCOUNT"));
@@ -135,17 +153,12 @@ public class TxEditActivity extends Activity {
         toBox.addView(toAccountSpinner);
         body.addView(toBox);
 
-        // ---- category (not for transfers)
-        categoryBox = new LinearLayout(this);
-        categoryBox.setOrientation(LinearLayout.VERTICAL);
-        categoryBox.addView(Ui.label(this, "CATEGORY"));
+        body.addView(Ui.label(this, "CATEGORY"));
         categorySpinner = new Spinner(this);
         categorySpinner.setBackground(Ui.rounded(Ui.CARD, 12, this));
         categorySpinner.setLayoutParams(Ui.lpTop(this, 6));
-        categoryBox.addView(categorySpinner);
-        body.addView(categoryBox);
+        body.addView(categorySpinner);
 
-        // ---- date
         body.addView(Ui.label(this, "DATE"));
         dateButton = new Button(this);
         dateButton.setAllCaps(false);
@@ -157,16 +170,62 @@ public class TxEditActivity extends Activity {
             @Override public void onClick(View v) { pickDate(); }
         });
         body.addView(dateButton);
-        refreshDateButton();
 
-        // ---- note
         body.addView(Ui.label(this, "NOTE"));
-        noteInput = Ui.input(this, "What was this for?", editing != null ? editing.note : "");
+        noteInput = Ui.input(this, "What was this for?",
+                seed != null && seed.note != null ? seed.note : "");
         body.addView(noteInput);
 
-        // ---- actions
+        // ---------------- Split members editor (Phase 3) ----------------
+        splitSection = new LinearLayout(this);
+        splitSection.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout sRow = new LinearLayout(this);
+        sRow.setOrientation(LinearLayout.HORIZONTAL);
+        sRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        sRow.setLayoutParams(Ui.lpTop(this, 16));
+        LinearLayout sCol = new LinearLayout(this);
+        sCol.setOrientation(LinearLayout.VERTICAL);
+        sCol.setLayoutParams(new LinearLayout.LayoutParams(
+                0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        sCol.addView(Ui.tv(this, "SPLIT THIS EXPENSE", 12, Ui.SECONDARY, true));
+        sCol.addView(Ui.tv(this, "Shares must add up to the full amount. "
+                + "Money a friend pays back lands in their paid account.",
+                11, Ui.SECONDARY, false));
+        sRow.addView(sCol);
+        splitSwitch = new Switch(this);
+        boolean seedIsSplit = seed != null && seed.isSplit
+                && seed.splits != null && !seed.splits.isEmpty();
+        splitSwitch.setChecked(seedIsSplit || startSplit);
+        sRow.addView(splitSwitch);
+        splitSection.addView(sRow);
+
+        splitBox = new LinearLayout(this);
+        splitBox.setOrientation(LinearLayout.VERTICAL);
+        splitEditor = new SplitEditor(this, new java.util.function.Supplier<Double>() {
+            @Override public Double get() { return currentAmount(); }
+        });
+        splitBox.addView(splitEditor.view());
+        splitSection.addView(splitBox);
+        body.addView(splitSection);
+
+        if (seedIsSplit) {
+            for (SplitMember s : seed.splits) {
+                splitEditor.addRow(s, s.name, s.amount);
+            }
+        }
+        splitSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override public void onCheckedChanged(CompoundButton b, boolean on) {
+                refreshFieldVisibility();
+                if (on && splitEditor.size() == 0) splitEditor.seedNew();
+                if (on) splitEditor.updateSum();
+            }
+        });
+        if (startSplit && splitEditor.size() == 0) {
+            splitEditor.seedNew();
+        }
+
         Button save = Ui.primaryButton(this,
-                editing == null ? "Add Transaction" : "Save Changes", Ui.PRIMARY);
+                editing != null ? "Save Changes" : "Add Transaction", Ui.PRIMARY);
         save.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { save(); }
         });
@@ -175,78 +234,53 @@ public class TxEditActivity extends Activity {
         if (editing != null) {
             Button del = Ui.dangerButton(this, "Delete Transaction");
             del.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) { confirmDelete(editing, false); }
+                @Override public void onClick(View v) { confirmDelete(); }
             });
             body.addView(del);
         }
 
-        refreshAccountSpinners();
-        refreshCategorySpinner();
+        refreshAccountSpinners(seed);
+        refreshCategorySpinner(seed);
+        refreshDateButton();
         refreshFieldVisibility();
     }
 
-    // ------------------------------------------------------------------ splits
-
-    private void buildSplitNotice(LinearLayout body, Transaction t) {
-        LinearLayout card = Ui.card(this, Ui.CARD_ALT);
-        card.setLayoutParams(Ui.lpTop(this, 8));
-        card.addView(Ui.tv(this, "👥 Split transaction", 16, Ui.TEXT, true));
-        TextView msg = Ui.tv(this, "Split transactions can't be edited in Phase 2 — "
-                + "split editing arrives in Phase 3. Nothing here can change or "
-                + "destroy the split below; it is shown read-only.", 13, Ui.SECONDARY, false);
-        msg.setLayoutParams(Ui.lpTop(this, 6));
-        card.addView(msg);
-        TextView head = Ui.tv(this, WalletLogic.formatSigned(t) + "  •  "
-                + Ui.prettyDate(t.date) + (t.note != null && !t.note.isEmpty()
-                ? "  •  " + t.note : ""), 14, Ui.TEXT, true);
-        head.setLayoutParams(Ui.lpTop(this, 10));
-        card.addView(head);
-        if (t.splits != null) {
-            for (SplitMember s : t.splits) {
-                TextView row = Ui.tv(this, (s.isPaid ? "✅ " : "⏳ ") + s.name
-                        + " — " + WalletLogic.formatINR(s.amount)
-                        + (s.isPaid ? " (paid)" : " (unpaid)"), 13, Ui.TEXT, false);
-                row.setLayoutParams(Ui.lpTop(this, 4));
-                card.addView(row);
-            }
-        }
-        body.addView(card);
-    }
-
-    // ------------------------------------------------------------------ type
+    // ------------------------------------------------------------------ UI state
 
     private void renderTypeChips() {
         typeRow.removeAllViews();
-        final String[] types = {"income", "expense", "transfer"};
-        final String[] labels = {"↓ Income", "↑ Expense", "⇄ Transfer"};
-        typeChips = new TextView[types.length];
+        final String[] types = {"expense", "income", "transfer"};
+        final String[] labels = {"💸 Expense", "💰 Income", "🔄 Transfer"};
         for (int i = 0; i < types.length; i++) {
-            final String tp = types[i];
-            int color = "income".equals(tp) ? Ui.INCOME
-                    : "expense".equals(tp) ? Ui.EXPENSE : Ui.TRANSFER;
-            TextView chip = Ui.chip(this, labels[i], tp.equals(type), color);
+            final String t = types[i];
+            int color = "income".equals(t) ? Ui.INCOME
+                    : "expense".equals(t) ? Ui.EXPENSE : Ui.TRANSFER;
+            TextView chip = Ui.chip(this, labels[i], t.equals(type), color);
             chip.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) {
-                    type = tp;
-                    renderTypeChips();
-                    refreshCategorySpinner();
-                    refreshFieldVisibility();
+                    if (!t.equals(type)) {
+                        type = t;
+                        renderTypeChips();
+                        refreshCategorySpinner(null);
+                        refreshFieldVisibility();
+                    }
                 }
             });
-            typeChips[i] = chip;
             typeRow.addView(chip);
         }
     }
 
     private void refreshFieldVisibility() {
-        boolean transfer = "transfer".equals(type);
-        toBox.setVisibility(transfer ? View.VISIBLE : View.GONE);
-        categoryBox.setVisibility(transfer ? View.GONE : View.VISIBLE);
+        boolean isTransfer = "transfer".equals(type);
+        toBox.setVisibility(isTransfer ? View.VISIBLE : View.GONE);
+        // Splits exist only for expenses (Flutter's rule).
+        boolean isExpense = "expense".equals(type);
+        splitSection.setVisibility(isExpense ? View.VISIBLE : View.GONE);
+        splitBox.setVisibility(isExpense && splitSwitch.isChecked()
+                ? View.VISIBLE : View.GONE);
     }
 
-    // ------------------------------------------------------------------ spinners
-
-    private void refreshAccountSpinners() {
+    private void refreshAccountSpinners(Transaction seed) {
         accountChoices = new ArrayList<>(db.accounts);
         List<String> names = new ArrayList<>();
         for (Account a : accountChoices) {
@@ -254,56 +288,45 @@ public class TxEditActivity extends Activity {
         }
         accountSpinner.setAdapter(Ui.spinnerAdapter(this, names));
         toAccountSpinner.setAdapter(Ui.spinnerAdapter(this, names));
-        if (editing != null) {
-            selectById(accountSpinner, accountChoices, editing.accountId);
-            if (editing.toAccountId != null) {
-                selectById(toAccountSpinner, accountChoices, editing.toAccountId);
-            } else if (accountChoices.size() > 1) {
-                toAccountSpinner.setSelection(1);
-            }
-        } else if (accountChoices.size() > 1) {
-            toAccountSpinner.setSelection(1);
+        if (seed != null) {
+            selectAccount(accountSpinner, seed.accountId);
+            selectAccount(toAccountSpinner, seed.toAccountId);
         }
     }
 
-    private void selectById(Spinner spinner, List<Account> choices, String id) {
-        for (int i = 0; i < choices.size(); i++) {
-            if (choices.get(i).id != null && choices.get(i).id.equals(id)) {
+    private void selectAccount(Spinner spinner, String accountId) {
+        if (accountId == null) return;
+        for (int i = 0; i < accountChoices.size(); i++) {
+            if (accountId.equals(accountChoices.get(i).id)) {
                 spinner.setSelection(i);
                 return;
             }
         }
     }
 
-    private void refreshCategorySpinner() {
-        if ("transfer".equals(type)) return;
-        // Remember the current pick where possible (editing / type switch).
-        String wanted = null;
-        int cur = categorySpinner.getSelectedItemPosition();
-        if (cur >= 0 && cur < categoryChoices.size()) {
-            wanted = categoryChoices.get(cur).id;
-        } else if (editing != null) {
-            wanted = editing.categoryId;
+    private void refreshCategorySpinner(Transaction seed) {
+        categoryChoices = new ArrayList<>();
+        categoryChoices.add(null);
+        if (!"transfer".equals(type)) {
+            categoryChoices.addAll(WalletLogic.categoriesForPicker(db.categories, type));
         }
-        categoryChoices = WalletLogic.categoriesForPicker(db.categories, type);
         List<String> names = new ArrayList<>();
-        for (Category c : categoryChoices) {
+        names.add("(no category)");
+        for (int i = 1; i < categoryChoices.size(); i++) {
+            Category c = categoryChoices.get(i);
             String prefix = c.parentId != null ? "    ↳ " : "";
             names.add(prefix + (c.icon != null ? c.icon + " " : "") + c.name);
         }
-        if (names.isEmpty()) names.add("(no categories — add one in Config)");
         categorySpinner.setAdapter(Ui.spinnerAdapter(this, names));
-        if (wanted != null) {
-            for (int i = 0; i < categoryChoices.size(); i++) {
-                if (wanted.equals(categoryChoices.get(i).id)) {
+        if (seed != null && seed.categoryId != null) {
+            for (int i = 1; i < categoryChoices.size(); i++) {
+                if (seed.categoryId.equals(categoryChoices.get(i).id)) {
                     categorySpinner.setSelection(i);
                     break;
                 }
             }
         }
     }
-
-    // ------------------------------------------------------------------ date
 
     private void pickDate() {
         new DatePickerDialog(this, new DatePickerDialog.OnDateSetListener() {
@@ -320,32 +343,12 @@ public class TxEditActivity extends Activity {
                 DateTimeFormatter.ofPattern("EEE, d MMM yyyy", Locale.ENGLISH)));
     }
 
-    private String isoDate() {
-        String time;
-        if (editing != null && editing.date != null && editing.date.length() >= 19
-                && editing.date.startsWith(pickedDate.toString())) {
-            time = editing.date.substring(11, 19); // keep original time on same-day edits
-        } else if (editing != null && editing.date != null && editing.date.length() >= 19) {
-            time = editing.date.substring(11, 19);
-        } else {
-            time = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
-        }
-        return pickedDate.toString() + "T" + time + ".000";
-    }
-
     // ------------------------------------------------------------------ save/delete
 
     private void save() {
-        String amtText = amountInput.getText().toString().trim();
-        double amount;
-        try {
-            amount = Double.parseDouble(amtText);
-        } catch (Exception e) {
-            toast("Enter a valid amount.");
-            return;
-        }
-        if (amount <= 0) {
-            toast("Amount must be more than zero.");
+        double amount = currentAmount();
+        if (amount <= 0 || Double.isNaN(amount)) {
+            toast("Enter an amount greater than zero.");
             return;
         }
         int accPos = accountSpinner.getSelectedItemPosition();
@@ -353,67 +356,82 @@ public class TxEditActivity extends Activity {
             toast("Pick an account.");
             return;
         }
-        Account from = accountChoices.get(accPos);
-
-        // IMPORTANT: build a NEW object for edits. updateTransaction()
-        // reverses the OLD object it finds in the DB — mutating `editing`
-        // in place first would make it reverse the new values instead.
-        Transaction t = new Transaction();
-        t.id = editing != null ? editing.id : "tx_" + System.currentTimeMillis();
-        t.type = type;
-        t.amount = amount;
-        t.accountId = from.id;
-        t.date = isoDate();
-        t.note = noteInput.getText().toString().trim();
-
+        String toId = null;
         if ("transfer".equals(type)) {
             int toPos = toAccountSpinner.getSelectedItemPosition();
             if (toPos < 0 || toPos >= accountChoices.size()) {
-                toast("Pick the account the money goes to.");
+                toast("Pick the destination account.");
                 return;
             }
-            Account to = accountChoices.get(toPos);
-            if (to.id != null && to.id.equals(from.id)) {
-                toast("From and To accounts can't be the same.");
+            toId = accountChoices.get(toPos).id;
+            if (toId.equals(accountChoices.get(accPos).id)) {
+                toast("Source and destination accounts must be different.");
                 return;
             }
-            t.toAccountId = to.id;
-            t.categoryId = null;
-        } else {
-            t.toAccountId = null;
-            int catPos = categorySpinner.getSelectedItemPosition();
-            t.categoryId = (catPos >= 0 && catPos < categoryChoices.size())
-                    ? categoryChoices.get(catPos).id : null;
         }
-        // Non-split form: a brand-new tx has no splits; an edited tx here is
-        // guaranteed non-split (split txs are blocked above), so this is safe.
-        t.isSplit = false;
+        String catId = null;
+        if (!"transfer".equals(type)) {
+            int catPos = categorySpinner.getSelectedItemPosition();
+            if (catPos > 0 && catPos < categoryChoices.size()) {
+                catId = categoryChoices.get(catPos).id;
+            }
+        }
+
+        boolean splitOn = "expense".equals(type) && splitSwitch.isChecked();
+        List<SplitMember> members = new ArrayList<>();
+        if (splitOn) {
+            members = splitEditor.collect(false);
+            String err = WalletLogic.splitValidationError(members, amount);
+            if (err != null) {
+                toast(err);
+                return;
+            }
+        }
+
+        Transaction fresh = new Transaction();
+        fresh.id = editing != null ? editing.id : "tx_" + System.currentTimeMillis();
+        fresh.type = type;
+        fresh.amount = amount;
+        fresh.accountId = accountChoices.get(accPos).id;
+        fresh.toAccountId = toId;
+        fresh.categoryId = catId;
+        fresh.date = pickedDate.toString() + "T"
+                + DateTimeFormatter.ofPattern("HH:mm:ss").format(pickedTime) + ".000";
+        fresh.note = noteInput.getText().toString().trim();
+        fresh.isSplit = splitOn;
+        fresh.splits = members;
 
         if (editing == null) {
-            WalletLogic.addTransaction(db, t);
+            WalletLogic.addTransaction(db, fresh);
         } else {
-            WalletLogic.updateTransaction(db, t);
+            WalletLogic.updateTransaction(db, fresh);
         }
         store.save();
-        toast(editing == null ? "Transaction added." : "Transaction updated.");
+        toast(editing != null ? "Transaction updated."
+                : usedTemplate != null ? "Transaction added from template."
+                : "Transaction added.");
         finish();
     }
 
-    private void confirmDelete(final Transaction t, final boolean split) {
-        String msg = split
-                ? "Delete this split transaction (" + WalletLogic.formatSigned(t)
-                        + ")? The full amount will be reversed from the account. "
-                        + "Its split with " + (t.splits != null ? t.splits.size() : 0)
-                        + " people will be removed too."
-                : "Delete this transaction (" + WalletLogic.formatSigned(t)
-                        + ")? The amount will be reversed from the account.";
+    private void confirmDelete() {
+        String extra = "";
+        if (editing.isSplit && editing.splits != null && !editing.splits.isEmpty()) {
+            int paidBack = 0;
+            for (SplitMember s : editing.splits) if (s.isPaid) paidBack++;
+            extra = "\n\nThis is a split transaction shared with "
+                    + editing.splits.size() + " people (" + paidBack
+                    + " already paid back). Deleting it reverses the expense "
+                    + "and any money collected for it.";
+        }
         new AlertDialog.Builder(this)
                 .setTitle("Delete transaction?")
-                .setMessage(msg)
+                .setMessage("Delete this " + editing.type + " of "
+                        + WalletLogic.formatINR(editing.amount)
+                        + "? Account balances will be updated." + extra)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Delete", new DialogInterface.OnClickListener() {
                     @Override public void onClick(DialogInterface d, int w) {
-                        WalletLogic.deleteTransaction(db, t.id);
+                        WalletLogic.deleteTransaction(db, editing.id);
                         store.save();
                         toast("Transaction deleted.");
                         finish();
@@ -422,14 +440,44 @@ public class TxEditActivity extends Activity {
                 .show();
     }
 
-    private void toast(String msg) {
-        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+    // ------------------------------------------------------------------ misc
+
+    private double currentAmount() {
+        try {
+            return Double.parseDouble(amountInput.getText().toString().trim());
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
-    private static String trimNum(double v) {
+    private static String fmt(double v) {
         if (v == Math.floor(v) && !Double.isInfinite(v)) {
             return Long.toString(Math.round(v));
         }
-        return Double.toString(v);
+        return String.format(Locale.US, "%.2f", v);
+    }
+
+    private static LocalDate parseDate(String iso, LocalDate fallback) {
+        if (iso == null || iso.length() < 10) return fallback;
+        try {
+            return LocalDate.parse(iso.substring(0, 10));
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
+
+    private static LocalTime parseTime(String iso) {
+        if (iso != null && iso.length() >= 19) {
+            try {
+                return LocalTime.parse(iso.substring(11, 19));
+            } catch (Exception ignored) {
+                // fall through
+            }
+        }
+        return LocalTime.of(12, 0);
+    }
+
+    private void toast(String msg) {
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
     }
 }
