@@ -16,6 +16,7 @@ import '../../widgets/account_icon.dart';
 import '../../widgets/user_avatar.dart';
 import '../../widgets/card_network_badge.dart';
 import 'dashboard_cards_view.dart';
+import '../../core/layout/responsive.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -66,6 +67,101 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     recentActivities.sort((a, b) => b.date.compareTo(a.date));
     final displayActivities = recentActivities.take(7).toList();
 
+    final wide = context.isWide;
+
+    // Dashboard sections, shared by the phone list and the wide grid.
+    final Widget netWalletCard = _NetWalletCard(
+      netWallet: netWallet,
+      inflow: inflow,
+      outflow: outflow,
+      savings: savings,
+      currency: currency,
+    ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.2);
+
+    // My Accounts in Wallet (Credit Card Style)
+    final List<Widget> accountsSection = [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'My Accounts in Wallet',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 18,
+                ),
+          ),
+          TextButton(
+            onPressed: () => context.go('/manage-accounts'),
+            child: const Text('Manage', style: TextStyle(fontSize: 12)),
+          ),
+        ],
+      ),
+      const SizedBox(height: 10),
+      _CreditCardsCarousel(accounts: accounts, currency: currency, ref: ref),
+    ];
+
+    // Exact Order #1: Recent Activities
+    final List<Widget> recentSection = [
+      _SectionHeader(
+        title: 'Recent Activities',
+        onSeeAll: () => context.go('/transactions'),
+      ),
+      const SizedBox(height: 12),
+      if (displayActivities.isEmpty)
+        const _EmptyState(
+          icon: Icons.receipt_long_outlined,
+          message: 'No transactions yet',
+          sub: 'Tap + to add your first transaction',
+        )
+      else
+        ...displayActivities.asMap().entries.map((e) {
+          final item = e.value;
+          if (item.transaction != null) {
+            return _TransactionTile(
+              txn: item.transaction!,
+              ref: ref,
+              delay: e.key * 60,
+            );
+          } else {
+            return _DebtCreditTile(
+              dc: item.debtCredit!,
+              ref: ref,
+              delay: e.key * 60,
+            );
+          }
+        }),
+    ];
+
+    // Exact Order #2: Split Bills & Shared Expenses
+    final Widget splitSection = _DashboardSplitBillsSection(
+      splitTxns: splitTxns,
+      accounts: accounts,
+      categories: categories,
+      currency: currency,
+      ref: ref,
+    );
+
+    // Exact Order #3: Upcoming Payments
+    final List<Widget> upcomingSection = [
+      _SectionHeader(
+        title: 'Upcoming Payments',
+        onSeeAll: () => context.go('/planned'),
+      ),
+      const SizedBox(height: 12),
+      if (upcoming.isEmpty)
+        const _EmptyState(
+          icon: Icons.calendar_month_outlined,
+          message: 'No upcoming payments',
+          sub: 'Subscriptions, EMIs and bills will appear here',
+        )
+      else
+        ...upcoming.take(4).map((p) => _UpcomingPaymentCard(
+              payment: p,
+              ref: ref,
+              currency: currency,
+            )),
+    ];
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -85,13 +181,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         );
       },
       child: Scaffold(
-        drawer: const AppDrawer(),
+        drawer: context.isWide ? null : const AppDrawer(),
         floatingActionButton: FloatingActionButton(
           onPressed: () => _showAddTransaction(context, ref),
           child: const Icon(Icons.add_rounded, size: 28),
         ),
         appBar: AppBar(
-          leading: Builder(
+          leading: context.isWide ? null : Builder(
             builder: (ctx) => IconButton(
               onPressed: () => Scaffold.of(ctx).openDrawer(),
               icon: const Icon(Icons.menu_rounded),
@@ -181,111 +277,40 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           onPageChanged: (idx) => setState(() => _currentPageIndex = idx),
           children: [
             // Page 0: Main Dashboard Overview
-            CustomScrollView(
-              slivers: [
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                  sliver: SliverList(
-                    delegate: SliverChildListDelegate([
-                      // 1. Top Net Wallet Card
-                      _NetWalletCard(
-                        netWallet: netWallet,
-                        inflow: inflow,
-                        outflow: outflow,
-                        savings: savings,
-                        currency: currency,
-                      ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.2),
-
-                      const SizedBox(height: 20),
-
-                      // 2. My Accounts in Wallet (Credit Card Style)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'My Accounts in Wallet',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 18,
-                                ),
-                          ),
-                          TextButton(
-                            onPressed: () => context.go('/manage-accounts'),
-                            child: const Text('Manage', style: TextStyle(fontSize: 12)),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      _CreditCardsCarousel(accounts: accounts, currency: currency, ref: ref),
-
-                      const SizedBox(height: 24),
-
-                      // 3. Exact Order #1: Recent Activities
-                      _SectionHeader(
-                        title: 'Recent Activities',
-                        onSeeAll: () => context.go('/transactions'),
-                      ),
-                      const SizedBox(height: 12),
-                      if (displayActivities.isEmpty)
-                        const _EmptyState(
-                          icon: Icons.receipt_long_outlined,
-                          message: 'No transactions yet',
-                          sub: 'Tap + to add your first transaction',
-                        )
-                      else
-                        ...displayActivities.asMap().entries.map((e) {
-                          final item = e.value;
-                          if (item.transaction != null) {
-                            return _TransactionTile(
-                              txn: item.transaction!,
-                              ref: ref,
-                              delay: e.key * 60,
-                            );
-                          } else {
-                            return _DebtCreditTile(
-                              dc: item.debtCredit!,
-                              ref: ref,
-                              delay: e.key * 60,
-                            );
-                          }
-                        }),
-
-                      const SizedBox(height: 24),
-
-                      // 4. Exact Order #2: Split Bills & Shared Expenses
-                      _DashboardSplitBillsSection(
-                        splitTxns: splitTxns,
-                        accounts: accounts,
-                        categories: categories,
-                        currency: currency,
-                        ref: ref,
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // 5. Exact Order #3: Upcoming Payments
-                      _SectionHeader(
-                        title: 'Upcoming Payments',
-                        onSeeAll: () => context.go('/planned'),
-                      ),
-                      const SizedBox(height: 12),
-                      if (upcoming.isEmpty)
-                        const _EmptyState(
-                          icon: Icons.calendar_month_outlined,
-                          message: 'No upcoming payments',
-                          sub: 'Subscriptions, EMIs and bills will appear here',
-                        )
-                      else
-                        ...upcoming.take(4).map((p) => _UpcomingPaymentCard(
-                              payment: p,
-                              ref: ref,
-                              currency: currency,
-                            )),
-                    ]),
+            if (wide)
+              _WideOverview(
+                netWalletCard: netWalletCard,
+                accounts: accountsSection,
+                recentActivities: recentSection,
+                splitBills: splitSection,
+                upcoming: upcomingSection,
+              )
+            else
+              CustomScrollView(
+                slivers: [
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                    sliver: SliverList(
+                      delegate: SliverChildListDelegate([
+                        // 1. Top Net Wallet Card
+                        netWalletCard,
+                        const SizedBox(height: 20),
+                        // 2. My Accounts in Wallet
+                        ...accountsSection,
+                        const SizedBox(height: 24),
+                        // 3. Recent Activities
+                        ...recentSection,
+                        const SizedBox(height: 24),
+                        // 4. Split Bills & Shared Expenses
+                        splitSection,
+                        const SizedBox(height: 24),
+                        // 5. Upcoming Payments
+                        ...upcomingSection,
+                      ]),
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
 
             // Page 1: Dashboard Cards & Analytics (Matching User Screenshots)
             DashboardCardsView(currency: currency),
@@ -296,7 +321,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   void _showAddTransaction(BuildContext context, WidgetRef ref) {
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       isScrollControlled: true,
       builder: (_) => AddTransactionSheet(ref: ref),
@@ -513,6 +538,20 @@ class _CreditCardsCarousel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (context.isWide) {
+      // A mouse can't drag a horizontal carousel, so wrap the cards instead.
+      return Wrap(
+        runSpacing: 12,
+        children: [
+          for (var i = 0; i < accounts.length; i++)
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: _CreditCardItem(account: accounts[i], ref: ref, delay: i * 50),
+            ),
+          MouseRegion(cursor: SystemMouseCursors.click, child: _AddCreditCard(ref: ref)),
+        ],
+      );
+    }
     return SizedBox(
       height: 136,
       child: ListView.builder(
@@ -546,7 +585,7 @@ class _CreditCardItem extends StatelessWidget {
     final color = Color(account.colorValue);
     final isEnabled = account.isEnabledForCalc;
 
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       isScrollControlled: true,
       builder: (ctx) => SafeArea(
@@ -605,7 +644,7 @@ class _CreditCardItem extends StatelessWidget {
                 subtitle: const Text('Change name, icon, color, currency'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  showModalBottomSheet(
+                  showAppSheet(
                     context: context,
                     isScrollControlled: true,
                     builder: (_) => AddAccountSheet(ref: ref, existing: account),
@@ -657,7 +696,7 @@ class _CreditCardItem extends StatelessWidget {
 
   void _showQuickUpdateBalance(BuildContext context) {
     final balanceCtrl = TextEditingController(text: account.balance.toStringAsFixed(2));
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       isScrollControlled: true,
       builder: (ctx) => Padding(
@@ -946,7 +985,7 @@ class _AddCreditCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => showModalBottomSheet(
+      onTap: () => showAppSheet(
         context: context,
         isScrollControlled: true,
         builder: (_) => AddAccountSheet(ref: ref),
@@ -1247,7 +1286,7 @@ class _TransactionTile extends ConsumerWidget {
             : AppColors.transfer;
     final sign = txn.type == 'income' ? '+' : txn.type == 'expense' ? '-' : '↔';
 
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       isScrollControlled: true,
       builder: (ctx) => Container(
@@ -1383,7 +1422,7 @@ class _TransactionTile extends ConsumerWidget {
                     label: const Text('Edit'),
                     onPressed: () {
                       Navigator.pop(ctx);
-                      showModalBottomSheet(
+                      showAppSheet(
                         context: context,
                         isScrollControlled: true,
                         builder: (_) => AddTransactionSheet(ref: ref, existing: txn),
@@ -1807,6 +1846,77 @@ class _DetailRow extends StatelessWidget {
           Text(
             value,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Wide (desktop/landscape) overview layout ────────────────────────────────
+
+class _WideOverview extends StatelessWidget {
+  final Widget netWalletCard;
+  final List<Widget> accounts;
+  final List<Widget> recentActivities;
+  final Widget splitBills;
+  final List<Widget> upcoming;
+
+  const _WideOverview({
+    required this.netWalletCard,
+    required this.accounts,
+    required this.recentActivities,
+    required this.splitBills,
+    required this.upcoming,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 100),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Summary row: balance card next to the accounts carousel.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(flex: 5, child: netWalletCard),
+              const SizedBox(width: 24),
+              Expanded(
+                flex: 7,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: accounts,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 28),
+          // Recent activity next to upcoming payments and split bills.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 7,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: recentActivities,
+                ),
+              ),
+              const SizedBox(width: 24),
+              Expanded(
+                flex: 5,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ...upcoming,
+                    const SizedBox(height: 24),
+                    splitBills,
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),

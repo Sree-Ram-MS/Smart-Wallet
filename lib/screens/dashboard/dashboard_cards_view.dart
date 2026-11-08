@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../../core/layout/responsive.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/utils.dart';
 import '../../models/models.dart';
@@ -31,6 +32,8 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
   Widget build(BuildContext context) {
     final cardOrder = ref.watch(analyticsCardOrderProvider);
 
+    if (context.isWide) return _buildWideGrid(context, cardOrder);
+
     return ReorderableListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
       physics: const BouncingScrollPhysics(),
@@ -56,6 +59,55 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
     );
   }
 
+  // ─── Wide layout: responsive 2–3 column grid ──────────────────────────────────
+
+  Widget _buildWideGrid(BuildContext context, List<String> cardOrder) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final columns = constraints.maxWidth >= 1150 ? 3 : 2;
+      return SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 100),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildHeader(context),
+            MasonryColumns(
+              columns: columns,
+              spacing: 18,
+              children: [
+                for (var i = 0; i < cardOrder.length; i++)
+                  Padding(
+                    key: ValueKey(cardOrder[i]),
+                    padding: const EdgeInsets.only(bottom: 18),
+                    child: _buildCardById(cardOrder[i], i),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  /// Wide layouts have no drag-to-reorder list; offer a move menu instead.
+  Widget _buildMoveMenu(int index) {
+    final count = ref.read(analyticsCardOrderProvider).length;
+    return PopupMenuButton<int>(
+      tooltip: 'Move card',
+      icon: Icon(
+        Icons.more_horiz_rounded,
+        size: 18,
+        color: _isDark ? Colors.white70 : AppColors.lightTextSecondary,
+      ),
+      onSelected: (target) => ref.read(analyticsCardOrderProvider.notifier).reorder(index, target),
+      itemBuilder: (_) => [
+        PopupMenuItem(value: 0, enabled: index > 0, child: const Text('Move to first')),
+        PopupMenuItem(value: index - 1, enabled: index > 0, child: const Text('Move earlier')),
+        PopupMenuItem(value: index + 1, enabled: index < count - 1, child: const Text('Move later')),
+        PopupMenuItem(value: count - 1, enabled: index < count - 1, child: const Text('Move to last')),
+      ],
+    );
+  }
+
   // ─── Header ─────────────────────────────────────────────────────────────────
 
   Widget _buildHeader(BuildContext context) {
@@ -76,7 +128,7 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
               ),
               const SizedBox(width: 8),
               Tooltip(
-                message: 'Drag handles to reorder cards',
+                message: context.isWide ? 'Use the ⋯ menu on a card to reorder' : 'Drag handles to reorder cards',
                 child: Icon(
                   Icons.swap_vert_rounded,
                   size: 18,
@@ -227,6 +279,9 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
           ),
         ),
         const SizedBox(width: 8),
+        if (context.isWide)
+          _buildMoveMenu(index)
+        else
         ReorderableDragStartListener(
           index: index,
           child: MouseRegion(
@@ -373,6 +428,9 @@ class _DashboardCardsViewState extends ConsumerState<DashboardCardsView> {
                       sideTitles: SideTitles(
                         showTitles: true,
                         reservedSize: 20,
+                        // One label slot per point; on wider charts fl_chart
+                        // otherwise picks fractional steps and repeats labels.
+                        interval: 1,
                         getTitlesWidget: (v, m) {
                           final idx = v.toInt();
                           if (idx == 0) return Text('30d ago', style: TextStyle(color: _isDark ? Colors.white38 : AppColors.lightTextMuted, fontSize: 9));
