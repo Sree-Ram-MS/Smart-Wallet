@@ -8,6 +8,8 @@ import 'providers/providers.dart';
 import 'services/cloud_sync_service.dart';
 import 'widgets/cloud_sync_indicator.dart';
 import 'widgets/add_transaction_sheet.dart';
+import 'widgets/app_shell.dart';
+import 'core/layout/responsive.dart';
 
 class SmartWalletApp extends ConsumerStatefulWidget {
   const SmartWalletApp({super.key});
@@ -43,7 +45,7 @@ class _SmartWalletAppState extends ConsumerState<SmartWalletApp> {
       if (uri.host == 'quick-add') {
         final type = uri.queryParameters['type'] ?? 'expense';
         final isSplit = type == 'split';
-        showModalBottomSheet(
+        showAppSheet(
           context: navCtx,
           isScrollControlled: true,
           builder: (_) => AddTransactionSheet(
@@ -68,6 +70,8 @@ class _SmartWalletAppState extends ConsumerState<SmartWalletApp> {
       darkTheme: AppTheme.dark,
       themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
       routerConfig: appRouter,
+      // Wide windows get a persistent sidebar; phones get the app unchanged.
+      builder: (context, child) => AppShell(child: child ?? const SizedBox.shrink()),
     );
   }
 }

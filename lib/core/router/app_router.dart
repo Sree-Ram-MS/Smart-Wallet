@@ -15,6 +15,7 @@ import '../../screens/splits/split_bills_screen.dart';
 import '../../screens/settings/settings_screen.dart';
 import '../../services/auth_service.dart';
 import '../../services/hive_service.dart';
+import '../../widgets/app_shell.dart';
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -23,6 +24,7 @@ final rootNavigatorKey = GlobalKey<NavigatorState>();
 // usePathUrlStrategy() unless the host rewrites unknown paths to index.html.
 final appRouter = GoRouter(
   navigatorKey: rootNavigatorKey,
+  observers: [popupRouteTracker],
   initialLocation: _getInitialRoute(),
   routes: [
     GoRoute(path: '/login', builder: (ctx, s) => const LoginScreen()),

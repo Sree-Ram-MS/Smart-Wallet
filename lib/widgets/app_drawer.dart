@@ -1,14 +1,91 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/layout/responsive.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/utils.dart';
 import '../../providers/providers.dart';
+import '../../core/router/app_router.dart';
 import '../../services/auth_service.dart';
 import 'user_avatar.dart';
 
-class AppDrawer extends ConsumerWidget {
+/// One navigation destination, shared by the drawer and the wide sidebar.
+class AppNavDestination {
+  final IconData icon;
+  final String label;
+  final String route;
+  const AppNavDestination(this.icon, this.label, this.route);
+}
+
+const appNavDestinations = <AppNavDestination>[
+  AppNavDestination(Icons.dashboard_rounded, 'Dashboard', '/dashboard'),
+  AppNavDestination(Icons.account_balance_wallet_rounded, 'Manage Accounts', '/manage-accounts'),
+  AppNavDestination(Icons.receipt_long_rounded, 'Transaction History', '/transactions'),
+  AppNavDestination(Icons.arrow_upward_rounded, 'Debts (I Lent)', '/debts'),
+  AppNavDestination(Icons.arrow_downward_rounded, 'Credits (I Borrowed)', '/credits'),
+  AppNavDestination(Icons.call_split_rounded, 'Split Bills / Expenses', '/split-bills'),
+  AppNavDestination(Icons.calendar_month_rounded, 'Planned Payments', '/planned'),
+  AppNavDestination(Icons.tune_rounded, 'Config / Categories', '/config'),
+  AppNavDestination(Icons.bookmark_rounded, 'Templates', '/templates'),
+  AppNavDestination(Icons.cloud_sync_rounded, 'Backup & Restore', '/import-export'),
+  AppNavDestination(Icons.settings_rounded, 'Settings', '/settings'),
+];
+
+Future<void> confirmAndSignOut(BuildContext context, WidgetRef ref) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (dCtx) => AlertDialog(
+      title: const Text('Sign Out'),
+      content: const Text('Are you sure you want to sign out?'),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(dCtx, false),
+            child: const Text('Cancel')),
+        TextButton(
+            onPressed: () => Navigator.pop(dCtx, true),
+            child: Text('Sign Out',
+                style: TextStyle(color: AppColors.expense))),
+      ],
+    ),
+  );
+  if (ok == true) {
+    await AuthService.signOut();
+    ref.read(userProvider.notifier).clearUser();
+    if (context.mounted) context.go('/login');
+  }
+}
+
+/// The phone navigation drawer.
+class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Drawer(
+      child: SafeArea(child: AppNavigationPanel()),
+    );
+  }
+}
+
+/// Drawer contents: profile header, destinations and sign out. Used inside the
+/// phone drawer and, on wide screens, as the extended sidebar.
+class AppNavigationPanel extends ConsumerWidget {
+  /// Current route when used outside a drawer (sidebar). In the drawer the
+  /// route is read from GoRouterState.
+  final String? currentLocation;
+
+  const AppNavigationPanel({super.key, this.currentLocation});
+
+  bool get _inDrawer => currentLocation == null;
+
+  void _closeDrawer(BuildContext context) {
+    if (_inDrawer) Navigator.pop(context);
+  }
+
+  /// The sidebar sits above the app Navigator (MaterialApp.router builder),
+  /// so dialogs and navigation from it go through the root navigator.
+  BuildContext _navContext(BuildContext context) =>
+      _inDrawer ? context : (rootNavigatorKey.currentContext ?? context);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -16,9 +93,7 @@ class AppDrawer extends ConsumerWidget {
     final isDark = user?.isDarkMode ?? true;
     final currency = user?.baseCurrency ?? 'INR';
 
-    return Drawer(
-      child: SafeArea(
-        child: Column(
+    return Column(
           children: [
             // Header
             Container(
@@ -41,8 +116,8 @@ class AppDrawer extends ConsumerWidget {
                     children: [
                       GestureDetector(
                         onTap: () {
-                          Navigator.pop(context);
-                          context.go('/settings');
+                          _closeDrawer(context);
+                          _navContext(context).go('/settings');
                         },
                         child: UserAvatar(user: user, radius: 28),
                       ),
@@ -123,7 +198,7 @@ class AppDrawer extends ConsumerWidget {
                       // Currency Badge aligned with Name & Email
                       InkWell(
                         borderRadius: BorderRadius.circular(20),
-                        onTap: () => _showCurrencyPicker(context, ref, currency),
+                        onTap: () => _showCurrencyPicker(_navContext(context), ref, currency),
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
@@ -160,8 +235,8 @@ class AppDrawer extends ConsumerWidget {
                     const SizedBox(height: 12),
                     InkWell(
                       onTap: () {
-                        Navigator.pop(context);
-                        context.go('/settings');
+                        _closeDrawer(context);
+                        _navContext(context).go('/settings');
                       },
                       borderRadius: BorderRadius.circular(10),
                       child: Container(
@@ -197,17 +272,13 @@ class AppDrawer extends ConsumerWidget {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 children: [
-                  _NavItem(icon: Icons.dashboard_rounded, label: 'Dashboard', route: '/dashboard'),
-                  _NavItem(icon: Icons.account_balance_wallet_rounded, label: 'Manage Accounts', route: '/manage-accounts'),
-                  _NavItem(icon: Icons.receipt_long_rounded, label: 'Transaction History', route: '/transactions'),
-                  _NavItem(icon: Icons.arrow_upward_rounded, label: 'Debts (I Lent)', route: '/debts'),
-                  _NavItem(icon: Icons.arrow_downward_rounded, label: 'Credits (I Borrowed)', route: '/credits'),
-                  _NavItem(icon: Icons.call_split_rounded, label: 'Split Bills / Expenses', route: '/split-bills'),
-                  _NavItem(icon: Icons.calendar_month_rounded, label: 'Planned Payments', route: '/planned'),
-                  _NavItem(icon: Icons.tune_rounded, label: 'Config / Categories', route: '/config'),
-                  _NavItem(icon: Icons.bookmark_rounded, label: 'Templates', route: '/templates'),
-                  _NavItem(icon: Icons.cloud_sync_rounded, label: 'Backup & Restore', route: '/import-export'),
-                  _NavItem(icon: Icons.settings_rounded, label: 'Settings', route: '/settings'),
+                  for (final d in appNavDestinations)
+                    _NavItem(
+                      icon: d.icon,
+                      label: d.label,
+                      route: d.route,
+                      currentLocation: currentLocation,
+                    ),
 
                   const Divider(height: 24),
 
@@ -216,41 +287,17 @@ class AppDrawer extends ConsumerWidget {
                     title: Text('Sign Out',
                         style: TextStyle(color: AppColors.expense, fontWeight: FontWeight.w600)),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    onTap: () async {
-                      final ok = await showDialog<bool>(
-                        context: context,
-                        builder: (_) => AlertDialog(
-                          title: const Text('Sign Out'),
-                          content: const Text('Are you sure you want to sign out?'),
-                          actions: [
-                            TextButton(
-                                onPressed: () => Navigator.pop(context, false),
-                                child: const Text('Cancel')),
-                            TextButton(
-                                onPressed: () => Navigator.pop(context, true),
-                                child: Text('Sign Out',
-                                    style: TextStyle(color: AppColors.expense))),
-                          ],
-                        ),
-                      );
-                      if (ok == true) {
-                        await AuthService.signOut();
-                        ref.read(userProvider.notifier).clearUser();
-                        if (context.mounted) context.go('/login');
-                      }
-                    },
+                    onTap: () => confirmAndSignOut(_navContext(context), ref),
                   ),
                 ],
               ),
             ),
           ],
-        ),
-      ),
-    );
+        );
   }
 
   void _showCurrencyPicker(BuildContext context, WidgetRef ref, String current) {
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(
@@ -298,11 +345,12 @@ class _NavItem extends StatelessWidget {
   final IconData icon;
   final String label;
   final String route;
-  const _NavItem({required this.icon, required this.label, required this.route});
+  final String? currentLocation;
+  const _NavItem({required this.icon, required this.label, required this.route, this.currentLocation});
 
   @override
   Widget build(BuildContext context) {
-    final current = GoRouterState.of(context).uri.toString();
+    final current = currentLocation ?? GoRouterState.of(context).uri.toString();
     final selected = current == route;
     return ListTile(
       leading: Icon(icon,
@@ -316,8 +364,12 @@ class _NavItem extends StatelessWidget {
       selectedTileColor: AppColors.primary.withValues(alpha: 0.1),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       onTap: () {
-        Navigator.pop(context);
-        context.go(route);
+        if (currentLocation == null) {
+          Navigator.pop(context);
+          context.go(route);
+        } else {
+          (rootNavigatorKey.currentContext ?? context).go(route);
+        }
       },
     );
   }
