@@ -1,6 +1,10 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'services/auth_service.dart';
+import 'services/cloud_sync_service.dart';
 import 'services/hive_service.dart';
 import 'services/notification_service.dart';
 import 'services/widget_service.dart';
@@ -15,23 +19,31 @@ void main() async {
     statusBarIconBrightness: Brightness.light,
   ));
 
-  // Set preferred orientations
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  // Set preferred orientations (no-op in browsers)
+  if (!kIsWeb) {
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+  }
 
-  // Initialize Hive
+  // Initialize Hive (IndexedDB on web)
   await HiveService.init();
 
-  // Initialize Notifications & Home Widget
-  await NotificationService.init();
-  await WidgetService.init();
   final user = HiveService.getUser();
-  final planned = HiveService.getPlanned();
-  await NotificationService.syncAllNotifications(user: user, payments: planned);
 
-  if (user != null) {
+  if (kIsWeb) {
+    // Google Identity Services keeps no session across page loads.
+    AuthService.initWeb();
+  } else {
+    // Notifications & Home Widget are Android/iOS only.
+    await NotificationService.init();
+    await WidgetService.init();
+    final planned = HiveService.getPlanned();
+    await NotificationService.syncAllNotifications(user: user, payments: planned);
+  }
+
+  if (!kIsWeb && user != null) {
     final netWallet = HiveService.getNetWallet();
     await WidgetService.updateWidgetData(
       netBalance: netWallet,
@@ -44,4 +56,13 @@ void main() async {
       child: SmartWalletApp(),
     ),
   );
+
+  // Google Drive sync (pull newer Drive data, auto-upload changes). Started
+  // after the first frame so its dialogs have a navigator. With the biometric
+  // lock on, the lock screen starts it after a successful unlock.
+  if (kIsWeb || user == null || !user.biometricEnabled) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(CloudSyncService.instance.start());
+    });
+  }
 }

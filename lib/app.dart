@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:home_widget/home_widget.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/providers.dart';
+import 'services/cloud_sync_service.dart';
+import 'widgets/cloud_sync_indicator.dart';
 import 'widgets/add_transaction_sheet.dart';
 
 class SmartWalletApp extends ConsumerStatefulWidget {
@@ -17,10 +20,16 @@ class _SmartWalletAppState extends ConsumerState<SmartWalletApp> {
   @override
   void initState() {
     super.initState();
+    CloudSyncService.instance
+      ..prompter = AppCloudSyncPrompter()
+      ..onDataReplaced = () {
+        if (mounted) refreshAllData(ref);
+      };
     _handleWidgetLaunch();
   }
 
   void _handleWidgetLaunch() {
+    if (kIsWeb) return; // Home screen widgets are Android/iOS only.
     HomeWidget.initiallyLaunchedFromHomeWidget().then(_processUri);
     HomeWidget.widgetClicked.listen(_processUri);
   }

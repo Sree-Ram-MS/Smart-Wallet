@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../providers/providers.dart';
 import '../../services/biometric_service.dart';
+import '../../services/cloud_sync_service.dart';
 import '../../services/auth_service.dart';
 
 class BiometricLockScreen extends ConsumerStatefulWidget {
@@ -29,6 +30,7 @@ class _BiometricLockScreenState extends ConsumerState<BiometricLockScreen> {
     if (mounted) {
       if (ok) {
         context.go('/dashboard');
+        CloudSyncService.instance.start();
       } else {
         setState(() { _authenticating = false; _failed = true; });
       }

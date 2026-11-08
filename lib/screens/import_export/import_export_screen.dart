@@ -1,16 +1,17 @@
-import 'dart:io';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
+import '../../core/platform/platform_helpers.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/utils.dart';
 import '../../models/models.dart';
 import '../../providers/providers.dart';
 import '../../services/backup_service.dart';
+import '../../services/cloud_sync_service.dart';
 import '../../services/google_drive_backup_service.dart';
 import '../../services/hive_service.dart';
 import '../../widgets/app_drawer.dart';
@@ -189,6 +190,8 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
       try {
         final password = usePassword ? passwordCtrl.text.trim() : null;
         await GoogleDriveBackupService.uploadBackupToGoogleDrive(password: password);
+        // Auto-sync keeps using the same encryption choice.
+        await CloudSyncService.instance.setSyncPassword(password);
         _notify('Database successfully backed up to your Google Drive!');
       } catch (e) {
         _notify('Backup failed: $e', isError: true);
@@ -269,6 +272,12 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
       final proceed = await _showRestoreConfirmation(preview);
       if (proceed != null) {
         await BackupService.restoreDatabase(preview.rawData, replaceAll: proceed);
+        // Local data now matches the Drive file (plus local items if merged).
+        final remoteModified = GoogleDriveBackupService.lastDownloadedRemoteModified;
+        if (remoteModified != null && proceed) {
+          await GoogleDriveBackupService.markSynced(remoteModified: remoteModified);
+        }
+        if (password != null) await CloudSyncService.instance.setSyncPassword(password);
         refreshAllData(ref);
         _notify('Restored from Google Drive! (${preview.transactionsCount} transactions, ${preview.accountsCount} accounts)');
       }
@@ -419,14 +428,17 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
     });
 
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.any);
-      if (result == null || result.files.isEmpty || result.files.first.path == null) {
+      final result = await FilePicker.platform.pickFiles(type: FileType.any, withData: kIsWeb);
+      final picked = (result == null || result.files.isEmpty) ? null : result.files.first;
+      final fileBytes = picked == null
+          ? null
+          : await readPickedBytes(path: kIsWeb ? null : picked.path, bytes: picked.bytes);
+      if (fileBytes == null) {
         setState(() => _localRestoreLoading = false);
         return;
       }
 
-      final file = File(result.files.first.path!);
-      final inspection = await BackupService.inspectFile(file);
+      final inspection = BackupService.inspectBytes(fileBytes);
 
       String? password;
       if (inspection.isEncrypted) {
@@ -454,7 +466,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
         password = passCtrl.text.trim();
       }
 
-      final preview = await BackupService.loadBackupPreview(file, password: password);
+      final preview = await BackupService.loadBackupPreview(fileBytes, password: password);
       if (!mounted) return;
 
       final proceed = await _showRestoreConfirmation(preview);
@@ -656,16 +668,12 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
       }
 
       final csv = const ListToCsvConverter().convert(rows);
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/smart_wallet_export_${DateTime.now().millisecondsSinceEpoch}.csv');
-      await file.writeAsString(csv);
-
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(file.path)],
-          subject: 'Smart Wallet CSV Export',
-          text: 'Smart Wallet CSV Export',
-        ),
+      await shareOrDownloadFile(
+        bytes: Uint8List.fromList(utf8.encode(csv)),
+        fileName: 'smart_wallet_export_${DateTime.now().millisecondsSinceEpoch}.csv',
+        mimeType: 'text/csv',
+        subject: 'Smart Wallet CSV Export',
+        text: 'Smart Wallet CSV Export',
       );
       _notify('Exported ${transactions.length} transactions to CSV!');
     } catch (e) {
@@ -681,14 +689,18 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
       _statusMsg = null;
     });
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['csv']);
-      if (result == null || result.files.isEmpty || result.files.first.path == null) {
+      final result = await FilePicker.platform
+          .pickFiles(type: FileType.custom, allowedExtensions: ['csv'], withData: kIsWeb);
+      final picked = (result == null || result.files.isEmpty) ? null : result.files.first;
+      final csvBytes = picked == null
+          ? null
+          : await readPickedBytes(path: kIsWeb ? null : picked.path, bytes: picked.bytes);
+      if (csvBytes == null) {
         setState(() => _csvImportLoading = false);
         return;
       }
 
-      final file = File(result.files.first.path!);
-      final content = await file.readAsString();
+      final content = utf8.decode(csvBytes);
       final rows = const CsvToListConverter().convert(content, eol: '\n');
 
       if (rows.isEmpty || rows.length < 2) {

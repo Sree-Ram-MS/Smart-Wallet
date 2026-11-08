@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../models/models.dart';
 import '../services/auth_service.dart';
+import '../services/cloud_sync_service.dart';
 import '../services/hive_service.dart';
 import '../services/notification_service.dart';
 import '../services/widget_service.dart';
@@ -49,6 +50,7 @@ class UserNotifier extends StateNotifier<UserProfile?> {
     if (linked != null) {
       state = linked;
       _syncNotifications();
+      CloudSyncService.instance.start();
       return true;
     }
     return false;

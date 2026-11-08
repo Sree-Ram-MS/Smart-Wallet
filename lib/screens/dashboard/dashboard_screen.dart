@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/cloud_sync_indicator.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -165,6 +166,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
           centerTitle: true,
           actions: [
+            const CloudSyncIndicator(),
             GestureDetector(
               onTap: () => context.go('/settings'),
               child: Padding(
