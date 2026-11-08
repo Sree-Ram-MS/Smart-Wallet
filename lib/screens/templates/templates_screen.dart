@@ -11,6 +11,7 @@ import '../../widgets/app_drawer.dart';
 import '../../widgets/add_transaction_sheet.dart';
 import '../../widgets/category_icon.dart';
 import '../../widgets/account_icon.dart';
+import '../../core/layout/responsive.dart';
 
 class TemplatesScreen extends ConsumerWidget {
   const TemplatesScreen({super.key});
@@ -28,9 +29,9 @@ class TemplatesScreen extends ConsumerWidget {
         context.go('/dashboard');
       },
       child: Scaffold(
-      drawer: const AppDrawer(),
+      drawer: context.isWide ? null : const AppDrawer(),
       appBar: AppBar(
-        leading: Builder(builder: (ctx) => IconButton(
+        leading: context.isWide ? null : Builder(builder: (ctx) => IconButton(
           icon: const Icon(Icons.menu_rounded),
           onPressed: () => Scaffold.of(ctx).openDrawer(),
         )),
@@ -54,7 +55,7 @@ class TemplatesScreen extends ConsumerWidget {
                 ],
               ),
             )
-          : ListView.builder(
+          : ResponsiveList.builder(
               padding: const EdgeInsets.all(16),
               itemCount: templates.length,
               itemBuilder: (ctx, i) {
@@ -109,7 +110,7 @@ class TemplatesScreen extends ConsumerWidget {
 
   void _useTemplate(BuildContext context, WidgetRef ref, Template t) {
     // Open Add Transaction sheet pre-filled with template data
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       isScrollControlled: true,
       builder: (_) => _PrefilledTransactionSheet(ref: ref, template: t),
@@ -117,7 +118,7 @@ class TemplatesScreen extends ConsumerWidget {
   }
 
   void _showAddSheet(BuildContext context, WidgetRef ref, List<Account> accounts, List<Category> categories, {Template? existing}) {
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       isScrollControlled: true,
       builder: (_) => _TemplateSheet(ref: ref, accounts: accounts, categories: categories, existing: existing),

@@ -11,6 +11,7 @@ import '../../widgets/app_drawer.dart';
 import '../../widgets/add_account_sheet.dart';
 import '../../widgets/account_icon.dart';
 import '../../widgets/card_network_badge.dart';
+import '../../core/layout/responsive.dart';
 
 class ManageAccountsScreen extends ConsumerWidget {
   const ManageAccountsScreen({super.key});
@@ -29,9 +30,10 @@ class ManageAccountsScreen extends ConsumerWidget {
         context.go('/dashboard');
       },
       child: Scaffold(
-        drawer: const AppDrawer(),
+        drawer: context.isWide ? null : const AppDrawer(),
         appBar: AppBar(
-          leading: Builder(
+          // Wide layouts navigate from the sidebar.
+          leading: context.isWide ? null : Builder(
             builder: (ctx) => IconButton(
               icon: const Icon(Icons.arrow_back_rounded),
               onPressed: () {
@@ -48,7 +50,7 @@ class ManageAccountsScreen extends ConsumerWidget {
             IconButton(
               tooltip: 'Add Account',
               icon: const Icon(Icons.add_rounded),
-              onPressed: () => showModalBottomSheet(
+              onPressed: () => showAppSheet(
                 context: context,
                 isScrollControlled: true,
                 builder: (_) => AddAccountSheet(ref: ref),
@@ -57,123 +59,134 @@ class ManageAccountsScreen extends ConsumerWidget {
           ],
         ),
         floatingActionButton: FloatingActionButton(
-          onPressed: () => showModalBottomSheet(
+          onPressed: () => showAppSheet(
             context: context,
             isScrollControlled: true,
             builder: (_) => AddAccountSheet(ref: ref),
           ),
           child: const Icon(Icons.add_rounded, size: 28),
         ),
-        body: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-          children: [
-            // Top Net Wallet Summary Banner
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF2E2276), Color(0xFF191C4A)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+        body: ContentWidth(
+          maxWidth: 1200,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+            children: [
+              // Top Net Wallet Summary Banner
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF2E2276), Color(0xFF191C4A)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.2),
+                      blurRadius: 20,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
                 ),
-                border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.2),
-                    blurRadius: 20,
-                    offset: const Offset(0, 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'TOTAL NET BALANCE',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${accounts.where((a) => a.isEnabledForCalc).length}/${accounts.length} Active',
+                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      CurrencyUtil.format(netWallet, currency),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 32,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Balance of all accounts included in calculations',
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12),
+                    ),
+                  ],
+                ),
+              ).animate().fadeIn(duration: 350.ms),
+
+              const SizedBox(height: 20),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'All Accounts (${accounts.length})',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  Text(
+                    'Tap to edit or update balance',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11),
                   ),
                 ],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'TOTAL NET BALANCE',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.1,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          '${accounts.where((a) => a.isEnabledForCalc).length}/${accounts.length} Active',
-                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    CurrencyUtil.format(netWallet, currency),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 32,
-                      fontWeight: FontWeight.w800,
+              const SizedBox(height: 12),
+
+              if (accounts.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 40),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        const Icon(Icons.account_balance_wallet_outlined, size: 64, color: AppColors.darkTextMuted),
+                        const SizedBox(height: 12),
+                        Text('No accounts found', style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 4),
+                        Text('Tap "+ Add Account" to create your first account', style: Theme.of(context).textTheme.bodySmall),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Balance of all accounts included in calculations',
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12),
-                  ),
-                ],
-              ),
-            ).animate().fadeIn(duration: 350.ms),
-
-            const SizedBox(height: 20),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'All Accounts (${accounts.length})',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                Text(
-                  'Tap to edit or update balance',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            if (accounts.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 40),
-                child: Center(
-                  child: Column(
-                    children: [
-                      const Icon(Icons.account_balance_wallet_outlined, size: 64, color: AppColors.darkTextMuted),
-                      const SizedBox(height: 12),
-                      Text('No accounts found', style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 4),
-                      Text('Tap "+ Add Account" to create your first account', style: Theme.of(context).textTheme.bodySmall),
-                    ],
-                  ),
-                ),
-              )
-            else
-              ...accounts.asMap().entries.map((e) {
-                final acc = e.value;
-                return _AccountManageCard(
-                  account: acc,
-                  ref: ref,
-                  delay: e.key * 50,
-                );
-              }),
-          ],
+                )
+              else if (context.isWide)
+                GridRows(
+                  columns: 2,
+                  children: [
+                    for (final e in accounts.asMap().entries)
+                      _AccountManageCard(account: e.value, ref: ref, delay: e.key * 50),
+                  ],
+                )
+              else
+                ...accounts.asMap().entries.map((e) {
+                  final acc = e.value;
+                  return _AccountManageCard(
+                    account: acc,
+                    ref: ref,
+                    delay: e.key * 50,
+                  );
+                }),
+            ],
+          ),
         ),
       ),
     );
@@ -193,7 +206,7 @@ class _AccountManageCard extends StatelessWidget {
 
   void _showQuickUpdateBalance(BuildContext context) {
     final balanceCtrl = TextEditingController(text: account.balance.toStringAsFixed(2));
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       isScrollControlled: true,
       builder: (ctx) => Padding(
@@ -406,7 +419,7 @@ class _AccountManageCard extends StatelessWidget {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   icon: const Icon(Icons.tune_rounded, size: 18),
-                  onPressed: () => showModalBottomSheet(
+                  onPressed: () => showAppSheet(
                     context: context,
                     isScrollControlled: true,
                     builder: (_) => AddAccountSheet(ref: ref, existing: account),

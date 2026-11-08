@@ -8,6 +8,7 @@ import '../../providers/providers.dart';
 import '../../core/utils/utils.dart';
 import 'category_icon.dart';
 import 'account_icon.dart';
+import '../core/layout/responsive.dart';
 
 const _uuid = Uuid();
 
@@ -329,7 +330,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
     final accounts = widget.ref.read(accountsProvider);
     final categories = widget.ref.read(categoriesProvider);
 
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       isScrollControlled: true,
       builder: (ctx) => SafeArea(

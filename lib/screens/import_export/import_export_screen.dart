@@ -15,6 +15,7 @@ import '../../services/cloud_sync_service.dart';
 import '../../services/google_drive_backup_service.dart';
 import '../../services/hive_service.dart';
 import '../../widgets/app_drawer.dart';
+import '../../core/layout/responsive.dart';
 
 class ImportExportScreen extends ConsumerStatefulWidget {
   const ImportExportScreen({super.key});
@@ -94,7 +95,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
     final passwordCtrl = TextEditingController();
     bool usePassword = false;
 
-    final shouldBackup = await showModalBottomSheet<bool>(
+    final shouldBackup = await showAppSheet<bool>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
@@ -295,7 +296,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
     bool usePassword = false;
     String selectedFormat = 'smartwallet';
 
-    final shouldBackup = await showModalBottomSheet<bool>(
+    final shouldBackup = await showAppSheet<bool>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
@@ -484,7 +485,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
 
   Future<bool?> _showRestoreConfirmation(BackupPreviewInfo preview) async {
     bool replaceAll = true;
-    return showModalBottomSheet<bool>(
+    return showAppSheet<bool>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
@@ -779,9 +780,9 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
         context.go('/dashboard');
       },
       child: Scaffold(
-        drawer: const AppDrawer(),
+        drawer: context.isWide ? null : const AppDrawer(),
         appBar: AppBar(
-          leading: Builder(
+          leading: context.isWide ? null : Builder(
             builder: (ctx) => IconButton(
               icon: const Icon(Icons.menu_rounded),
               onPressed: () => Scaffold.of(ctx).openDrawer(),
@@ -789,187 +790,190 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
           ),
           title: const Text('Backup & Cloud Sync'),
         ),
-        body: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            // Cloud Status Card
-            Container(
-              padding: const EdgeInsets.all(16),
-              margin: const EdgeInsets.only(bottom: 20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    AppColors.primary.withValues(alpha: 0.22),
-                    Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E28) : AppColors.lightCard,
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.primary.withValues(alpha: 0.35)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.cloud_done_rounded, color: AppColors.primary, size: 24),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Google Drive Serverless Sync',
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          cloudTime != null
-                              ? 'Google Drive synced: $cloudTime'
-                              : (localTime != null ? 'Local backup: $localTime' : 'No cloud backup yet'),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: cloudTime != null
-                                ? AppColors.income
-                                : (Theme.of(context).brightness == Brightness.dark
-                                    ? AppColors.darkTextSecondary
-                                    : AppColors.lightTextSecondary),
-                            fontWeight: cloudTime != null ? FontWeight.w600 : FontWeight.normal,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // SECTION 1: Google Drive Sync
-            const _SectionHeader(
-              title: 'Google Drive Sync (Serverless & Private)',
-              icon: Icons.add_to_drive_rounded,
-            ),
-            const SizedBox(height: 10),
-
-            _ActionCard(
-              icon: Icons.cloud_upload_rounded,
-              iconColor: AppColors.primary,
-              title: '1-Tap Backup to Google Drive',
-              description:
-                  'Silently uploads an encrypted snapshot into your hidden Google Drive AppData folder. No server needed.',
-              buttonLabel: 'Backup to Google Drive',
-              loading: _driveBackupLoading,
-              onTap: _handleGoogleDriveBackup,
-            ),
-            const SizedBox(height: 14),
-
-            _ActionCard(
-              icon: Icons.cloud_download_rounded,
-              iconColor: AppColors.income,
-              title: 'Restore from Google Drive',
-              description:
-                  'Downloads and restores your cloud backup on any new phone or after reinstalling.',
-              buttonLabel: 'Restore from Google Drive',
-              loading: _driveRestoreLoading,
-              onTap: _handleGoogleDriveRestore,
-            ),
-            const SizedBox(height: 28),
-
-            // SECTION 2: Local File Backup
-            const _SectionHeader(
-              title: 'Local / Offline File Backup (.smartwallet)',
-              icon: Icons.folder_zip_rounded,
-            ),
-            const SizedBox(height: 10),
-
-            _ActionCard(
-              icon: Icons.share_rounded,
-              iconColor: AppColors.accent,
-              title: 'Export .smartwallet File',
-              description: 'Save encrypted backup file to device files or share via email / messaging apps.',
-              buttonLabel: 'Export File',
-              loading: _localBackupLoading,
-              onTap: _handleLocalBackup,
-            ),
-            const SizedBox(height: 14),
-
-            _ActionCard(
-              icon: Icons.restore_page_rounded,
-              iconColor: AppColors.transfer,
-              title: 'Restore from Local File',
-              description: 'Select a previously exported .smartwallet file to restore database.',
-              buttonLabel: 'Pick & Restore File',
-              loading: _localRestoreLoading,
-              onTap: _handleLocalRestore,
-            ),
-            const SizedBox(height: 28),
-
-            // SECTION 3: CSV Tools
-            const _SectionHeader(
-              title: 'Spreadsheet Export & Import (CSV)',
-              icon: Icons.table_chart_outlined,
-            ),
-            const SizedBox(height: 10),
-
-            _ActionCard(
-              icon: Icons.upload_file_rounded,
-              iconColor: AppColors.accent,
-              title: 'Export Transactions to CSV',
-              description: 'Export all records into CSV format for Excel or Google Sheets.',
-              buttonLabel: 'Export CSV',
-              loading: _csvExportLoading,
-              onTap: _exportCSV,
-            ),
-            const SizedBox(height: 14),
-
-            _ActionCard(
-              icon: Icons.download_rounded,
-              iconColor: AppColors.transfer,
-              title: 'Import Transactions from CSV',
-              description: 'Import transaction records from a CSV file.',
-              buttonLabel: 'Import CSV',
-              loading: _csvImportLoading,
-              onTap: _importCSV,
-            ),
-
-            if (_statusMsg != null) ...[
-              const SizedBox(height: 24),
+        body: ContentWidth(
+          maxWidth: 820,
+          child: ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              // Cloud Status Card
               Container(
-                width: double.infinity,
                 padding: const EdgeInsets.all(16),
+                margin: const EdgeInsets.only(bottom: 20),
                 decoration: BoxDecoration(
-                  color: (_isError ? AppColors.expense : AppColors.income).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: (_isError ? AppColors.expense : AppColors.income).withValues(alpha: 0.3)),
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.primary.withValues(alpha: 0.22),
+                      Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E28) : AppColors.lightCard,
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.35)),
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      _isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
-                      color: _isError ? AppColors.expense : AppColors.income,
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.cloud_done_rounded, color: AppColors.primary, size: 24),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 14),
                     Expanded(
-                      child: Text(
-                        _statusMsg!,
-                        style: TextStyle(
-                          color: _isError ? AppColors.expense : AppColors.income,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Google Drive Serverless Sync',
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            cloudTime != null
+                                ? 'Google Drive synced: $cloudTime'
+                                : (localTime != null ? 'Local backup: $localTime' : 'No cloud backup yet'),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: cloudTime != null
+                                  ? AppColors.income
+                                  : (Theme.of(context).brightness == Brightness.dark
+                                      ? AppColors.darkTextSecondary
+                                      : AppColors.lightTextSecondary),
+                              fontWeight: cloudTime != null ? FontWeight.w600 : FontWeight.normal,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
+
+              // SECTION 1: Google Drive Sync
+              const _SectionHeader(
+                title: 'Google Drive Sync (Serverless & Private)',
+                icon: Icons.add_to_drive_rounded,
+              ),
+              const SizedBox(height: 10),
+
+              _ActionCard(
+                icon: Icons.cloud_upload_rounded,
+                iconColor: AppColors.primary,
+                title: '1-Tap Backup to Google Drive',
+                description:
+                    'Silently uploads an encrypted snapshot into your hidden Google Drive AppData folder. No server needed.',
+                buttonLabel: 'Backup to Google Drive',
+                loading: _driveBackupLoading,
+                onTap: _handleGoogleDriveBackup,
+              ),
+              const SizedBox(height: 14),
+
+              _ActionCard(
+                icon: Icons.cloud_download_rounded,
+                iconColor: AppColors.income,
+                title: 'Restore from Google Drive',
+                description:
+                    'Downloads and restores your cloud backup on any new phone or after reinstalling.',
+                buttonLabel: 'Restore from Google Drive',
+                loading: _driveRestoreLoading,
+                onTap: _handleGoogleDriveRestore,
+              ),
+              const SizedBox(height: 28),
+
+              // SECTION 2: Local File Backup
+              const _SectionHeader(
+                title: 'Local / Offline File Backup (.smartwallet)',
+                icon: Icons.folder_zip_rounded,
+              ),
+              const SizedBox(height: 10),
+
+              _ActionCard(
+                icon: Icons.share_rounded,
+                iconColor: AppColors.accent,
+                title: 'Export .smartwallet File',
+                description: 'Save encrypted backup file to device files or share via email / messaging apps.',
+                buttonLabel: 'Export File',
+                loading: _localBackupLoading,
+                onTap: _handleLocalBackup,
+              ),
+              const SizedBox(height: 14),
+
+              _ActionCard(
+                icon: Icons.restore_page_rounded,
+                iconColor: AppColors.transfer,
+                title: 'Restore from Local File',
+                description: 'Select a previously exported .smartwallet file to restore database.',
+                buttonLabel: 'Pick & Restore File',
+                loading: _localRestoreLoading,
+                onTap: _handleLocalRestore,
+              ),
+              const SizedBox(height: 28),
+
+              // SECTION 3: CSV Tools
+              const _SectionHeader(
+                title: 'Spreadsheet Export & Import (CSV)',
+                icon: Icons.table_chart_outlined,
+              ),
+              const SizedBox(height: 10),
+
+              _ActionCard(
+                icon: Icons.upload_file_rounded,
+                iconColor: AppColors.accent,
+                title: 'Export Transactions to CSV',
+                description: 'Export all records into CSV format for Excel or Google Sheets.',
+                buttonLabel: 'Export CSV',
+                loading: _csvExportLoading,
+                onTap: _exportCSV,
+              ),
+              const SizedBox(height: 14),
+
+              _ActionCard(
+                icon: Icons.download_rounded,
+                iconColor: AppColors.transfer,
+                title: 'Import Transactions from CSV',
+                description: 'Import transaction records from a CSV file.',
+                buttonLabel: 'Import CSV',
+                loading: _csvImportLoading,
+                onTap: _importCSV,
+              ),
+
+              if (_statusMsg != null) ...[
+                const SizedBox(height: 24),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: (_isError ? AppColors.expense : AppColors.income).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: (_isError ? AppColors.expense : AppColors.income).withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
+                        color: _isError ? AppColors.expense : AppColors.income,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _statusMsg!,
+                          style: TextStyle(
+                            color: _isError ? AppColors.expense : AppColors.income,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 40),
             ],
-            const SizedBox(height: 40),
-          ],
+          ),
         ),
       ),
     );

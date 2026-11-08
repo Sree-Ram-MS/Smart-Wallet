@@ -10,6 +10,7 @@ import '../../providers/providers.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/category_icon.dart';
 import '../../widgets/account_icon.dart';
+import '../../core/layout/responsive.dart';
 
 /// Debts screen — "I Lent" (direction = 'lent')
 class DebtsScreen extends ConsumerWidget {
@@ -33,9 +34,9 @@ class DebtsScreen extends ConsumerWidget {
       child: DefaultTabController(
         length: 2,
         child: Scaffold(
-          drawer: const AppDrawer(),
+          drawer: context.isWide ? null : const AppDrawer(),
           appBar: AppBar(
-            leading: Builder(
+            leading: context.isWide ? null : Builder(
               builder: (ctx) => IconButton(
                 icon: const Icon(Icons.menu_rounded),
                 onPressed: () => Scaffold.of(ctx).openDrawer(),
@@ -66,7 +67,7 @@ class DebtsScreen extends ConsumerWidget {
     List<Category> categories, {
     DebtCredit? existing,
   }) {
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -105,9 +106,9 @@ class CreditsScreen extends ConsumerWidget {
       child: DefaultTabController(
         length: 2,
         child: Scaffold(
-          drawer: const AppDrawer(),
+          drawer: context.isWide ? null : const AppDrawer(),
           appBar: AppBar(
-            leading: Builder(
+            leading: context.isWide ? null : Builder(
               builder: (ctx) => IconButton(
                 icon: const Icon(Icons.menu_rounded),
                 onPressed: () => Scaffold.of(ctx).openDrawer(),
@@ -138,7 +139,7 @@ class CreditsScreen extends ConsumerWidget {
     List<Category> categories, {
     DebtCredit? existing,
   }) {
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -196,7 +197,7 @@ class _DebtList extends StatelessWidget {
       );
     }
 
-    return ListView.builder(
+    return ResponsiveList.builder(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
       itemCount: items.length,
       itemBuilder: (ctx, i) {
@@ -369,7 +370,7 @@ class _DebtList extends StatelessWidget {
 
   void _showOptions(BuildContext context, DebtCredit d) {
     final isLent = d.direction == 'lent';
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -418,7 +419,7 @@ class _DebtList extends StatelessWidget {
                   title: const Text('Edit Details'),
                   onTap: () {
                     Navigator.pop(ctx);
-                    showModalBottomSheet(
+                    showAppSheet(
                       context: context,
                       isScrollControlled: true,
                       shape: const RoundedRectangleBorder(

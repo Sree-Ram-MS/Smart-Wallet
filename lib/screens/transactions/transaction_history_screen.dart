@@ -9,6 +9,7 @@ import '../../providers/providers.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/add_transaction_sheet.dart';
 import '../../widgets/category_icon.dart';
+import '../../core/layout/responsive.dart';
 
 class TransactionHistoryScreen extends ConsumerStatefulWidget {
   const TransactionHistoryScreen({super.key});
@@ -135,9 +136,9 @@ class _TransactionHistoryScreenState extends ConsumerState<TransactionHistoryScr
         context.go('/dashboard');
       },
       child: Scaffold(
-        drawer: const AppDrawer(),
+        drawer: context.isWide ? null : const AppDrawer(),
         appBar: AppBar(
-          leading: Builder(
+          leading: context.isWide ? null : Builder(
             builder: (ctx) => IconButton(
               icon: const Icon(Icons.menu_rounded),
               onPressed: () => Scaffold.of(ctx).openDrawer(),
@@ -173,181 +174,184 @@ class _TransactionHistoryScreenState extends ConsumerState<TransactionHistoryScr
             ),
           ],
         ),
-        body: Column(
-          children: [
-            // Search Input Field
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: TextField(
-                controller: _searchCtrl,
-                onChanged: (v) => setState(() => _query = v),
-                decoration: InputDecoration(
-                  hintText: 'Search notes, categories, accounts, tags...',
-                  prefixIcon: const Icon(Icons.search_rounded),
-                  suffixIcon: _query.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear_rounded),
-                          onPressed: () {
-                            _searchCtrl.clear();
-                            setState(() => _query = '');
-                          },
-                        )
-                      : null,
+        body: ContentWidth(
+          maxWidth: 1000,
+          child: Column(
+            children: [
+              // Search Input Field
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: TextField(
+                  controller: _searchCtrl,
+                  onChanged: (v) => setState(() => _query = v),
+                  decoration: InputDecoration(
+                    hintText: 'Search notes, categories, accounts, tags...',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: _query.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear_rounded),
+                            onPressed: () {
+                              _searchCtrl.clear();
+                              setState(() => _query = '');
+                            },
+                          )
+                        : null,
+                  ),
                 ),
               ),
-            ),
 
-            // Active Filter Chips Bar
-            if (_activeFilterCount > 0)
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              // Active Filter Chips Bar
+              if (_activeFilterCount > 0)
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: Row(
+                    children: [
+                      // Clear all button
+                      InkWell(
+                        onTap: _clearAllFilters,
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          margin: const EdgeInsets.only(right: 8),
+                          decoration: BoxDecoration(
+                            color: AppColors.expense.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: AppColors.expense.withValues(alpha: 0.3)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.delete_sweep_rounded, size: 14, color: AppColors.expense),
+                              SizedBox(width: 4),
+                              Text(
+                                'Clear all',
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.expense),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // Type Chip
+                      if (_filterType != null)
+                        _FilterBadgeChip(
+                          label: 'Type: ${_filterType!.toUpperCase()}',
+                          onRemove: () => setState(() => _filterType = null),
+                        ),
+
+                      // Account Chips
+                      ..._filterAccountIds.map((accId) {
+                        final acc = accounts.firstWhereOrNull((a) => a.id == accId);
+                        return _FilterBadgeChip(
+                          label: '${acc?.emoji ?? '💳'} ${acc?.name ?? 'Account'}',
+                          onRemove: () => setState(() => _filterAccountIds.remove(accId)),
+                        );
+                      }),
+
+                      // Category Chips
+                      ..._filterCategoryIds.map((catId) {
+                        final cat = categories.firstWhereOrNull((c) => c.id == catId);
+                        return _FilterBadgeChip(
+                          label: '${cat?.icon ?? '🏷️'} ${cat?.name ?? 'Category'}',
+                          onRemove: () => setState(() => _filterCategoryIds.remove(catId)),
+                        );
+                      }),
+
+                      // Amount Chip
+                      if (_minAmount != null || _maxAmount != null)
+                        _FilterBadgeChip(
+                          label: _minAmount != null && _maxAmount != null
+                              ? 'Amount: $currency $_minAmount – $_maxAmount'
+                              : _minAmount != null
+                                  ? 'Amount: >= $currency $_minAmount'
+                                  : 'Amount: <= $currency $_maxAmount',
+                          onRemove: () => setState(() {
+                            _minAmount = null;
+                            _maxAmount = null;
+                          }),
+                        ),
+
+                      // Date Range Chip
+                      if (_dateRange != null)
+                        _FilterBadgeChip(
+                          label: _datePresetLabel ??
+                              '${DateUtil.formatShort(_dateRange!.start)} – ${DateUtil.formatShort(_dateRange!.end)}',
+                          onRemove: () => setState(() {
+                            _dateRange = null;
+                            _datePresetLabel = null;
+                          }),
+                        ),
+                    ],
+                  ),
+                ),
+
+              // Summary Header Count
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
                 child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Clear all button
-                    InkWell(
-                      onTap: _clearAllFilters,
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        margin: const EdgeInsets.only(right: 8),
-                        decoration: BoxDecoration(
-                          color: AppColors.expense.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: AppColors.expense.withValues(alpha: 0.3)),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.delete_sweep_rounded, size: 14, color: AppColors.expense),
-                            SizedBox(width: 4),
-                            Text(
-                              'Clear all',
-                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.expense),
-                            ),
-                          ],
-                        ),
+                    Text(
+                      '${filtered.length} ${filtered.length == 1 ? 'transaction' : 'transactions'} found',
+                      style: const TextStyle(fontSize: 12, color: AppColors.darkTextSecondary, fontWeight: FontWeight.w600),
+                    ),
+                    Text(
+                      'Net: ${CurrencyUtil.format(totalSum, currency)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: totalSum >= 0 ? AppColors.income : AppColors.expense,
                       ),
                     ),
-
-                    // Type Chip
-                    if (_filterType != null)
-                      _FilterBadgeChip(
-                        label: 'Type: ${_filterType!.toUpperCase()}',
-                        onRemove: () => setState(() => _filterType = null),
-                      ),
-
-                    // Account Chips
-                    ..._filterAccountIds.map((accId) {
-                      final acc = accounts.firstWhereOrNull((a) => a.id == accId);
-                      return _FilterBadgeChip(
-                        label: '${acc?.emoji ?? '💳'} ${acc?.name ?? 'Account'}',
-                        onRemove: () => setState(() => _filterAccountIds.remove(accId)),
-                      );
-                    }),
-
-                    // Category Chips
-                    ..._filterCategoryIds.map((catId) {
-                      final cat = categories.firstWhereOrNull((c) => c.id == catId);
-                      return _FilterBadgeChip(
-                        label: '${cat?.icon ?? '🏷️'} ${cat?.name ?? 'Category'}',
-                        onRemove: () => setState(() => _filterCategoryIds.remove(catId)),
-                      );
-                    }),
-
-                    // Amount Chip
-                    if (_minAmount != null || _maxAmount != null)
-                      _FilterBadgeChip(
-                        label: _minAmount != null && _maxAmount != null
-                            ? 'Amount: $currency $_minAmount – $_maxAmount'
-                            : _minAmount != null
-                                ? 'Amount: >= $currency $_minAmount'
-                                : 'Amount: <= $currency $_maxAmount',
-                        onRemove: () => setState(() {
-                          _minAmount = null;
-                          _maxAmount = null;
-                        }),
-                      ),
-
-                    // Date Range Chip
-                    if (_dateRange != null)
-                      _FilterBadgeChip(
-                        label: _datePresetLabel ??
-                            '${DateUtil.formatShort(_dateRange!.start)} – ${DateUtil.formatShort(_dateRange!.end)}',
-                        onRemove: () => setState(() {
-                          _dateRange = null;
-                          _datePresetLabel = null;
-                        }),
-                      ),
                   ],
                 ),
               ),
 
-            // Summary Header Count
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '${filtered.length} ${filtered.length == 1 ? 'transaction' : 'transactions'} found',
-                    style: const TextStyle(fontSize: 12, color: AppColors.darkTextSecondary, fontWeight: FontWeight.w600),
-                  ),
-                  Text(
-                    'Net: ${CurrencyUtil.format(totalSum, currency)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: totalSum >= 0 ? AppColors.income : AppColors.expense,
-                    ),
-                  ),
-                ],
+              // Transactions List
+              Expanded(
+                child: filtered.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.receipt_long_outlined, size: 56, color: AppColors.darkTextMuted),
+                            const SizedBox(height: 12),
+                            Text('No transactions match your search/filters',
+                                style: Theme.of(context).textTheme.bodyMedium),
+                            const SizedBox(height: 8),
+                            if (_activeFilterCount > 0 || _query.isNotEmpty)
+                              TextButton.icon(
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  setState(() {
+                                    _query = '';
+                                    _clearAllFilters();
+                                  });
+                                },
+                                icon: const Icon(Icons.restart_alt_rounded, size: 16),
+                                label: const Text('Reset All Filters'),
+                              ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
+                        itemCount: filtered.length,
+                        itemBuilder: (ctx, i) => _TxnListTile(
+                          txn: filtered[i],
+                          accounts: accounts,
+                          categories: categories,
+                          ref: ref,
+                          delay: i < 15 ? i * 25 : 0,
+                        ),
+                      ),
               ),
-            ),
-
-            // Transactions List
-            Expanded(
-              child: filtered.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.receipt_long_outlined, size: 56, color: AppColors.darkTextMuted),
-                          const SizedBox(height: 12),
-                          Text('No transactions match your search/filters',
-                              style: Theme.of(context).textTheme.bodyMedium),
-                          const SizedBox(height: 8),
-                          if (_activeFilterCount > 0 || _query.isNotEmpty)
-                            TextButton.icon(
-                              onPressed: () {
-                                _searchCtrl.clear();
-                                setState(() {
-                                  _query = '';
-                                  _clearAllFilters();
-                                });
-                              },
-                              icon: const Icon(Icons.restart_alt_rounded, size: 16),
-                              label: const Text('Reset All Filters'),
-                            ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
-                      itemCount: filtered.length,
-                      itemBuilder: (ctx, i) => _TxnListTile(
-                        txn: filtered[i],
-                        accounts: accounts,
-                        categories: categories,
-                        ref: ref,
-                        delay: i < 15 ? i * 25 : 0,
-                      ),
-                    ),
-            ),
-          ],
+            ],
+          ),
         ),
         floatingActionButton: FloatingActionButton(
-          onPressed: () => showModalBottomSheet(
+          onPressed: () => showAppSheet(
             context: context,
             isScrollControlled: true,
             builder: (_) => AddTransactionSheet(ref: ref),
@@ -375,7 +379,7 @@ class _TransactionHistoryScreenState extends ConsumerState<TransactionHistoryScr
 
     final parentCategories = categories.where((c) => c.parentId == null).toList();
 
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF18181E),
@@ -408,10 +412,12 @@ class _TransactionHistoryScreenState extends ConsumerState<TransactionHistoryScr
           return true;
         }).length;
 
+        // In the wide-layout dialog the sheet simply fills the dialog.
+        final wide = context.isWide;
         return DraggableScrollableSheet(
-          initialChildSize: 0.85,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
+          initialChildSize: wide ? 1.0 : 0.85,
+          minChildSize: wide ? 1.0 : 0.5,
+          maxChildSize: wide ? 1.0 : 0.95,
           expand: false,
           builder: (_, scrollCtrl) => Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -932,7 +938,7 @@ class _TxnListTile extends StatelessWidget {
             : AppColors.transfer;
     final sign = txn.type == 'income' ? '+' : txn.type == 'expense' ? '-' : '↔';
 
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       isScrollControlled: true,
       builder: (ctx) => Container(
@@ -1216,7 +1222,7 @@ class _TxnListTile extends StatelessWidget {
                     label: const Text('Edit', style: TextStyle(fontWeight: FontWeight.w600)),
                     onPressed: () {
                       Navigator.pop(ctx);
-                      showModalBottomSheet(
+                      showAppSheet(
                         context: context,
                         isScrollControlled: true,
                         builder: (_) => AddTransactionSheet(

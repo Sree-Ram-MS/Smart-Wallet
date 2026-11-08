@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/router/app_router.dart';
 import '../core/theme/app_colors.dart';
 import '../services/cloud_sync_service.dart';
+import '../core/layout/responsive.dart';
 
 String _ago(DateTime? t) {
   if (t == null) return 'never';
@@ -82,7 +83,7 @@ class CloudSyncIndicator extends StatelessWidget {
 
 Future<void> showCloudSyncSheet(BuildContext context) {
   final service = CloudSyncService.instance;
-  return showModalBottomSheet<void>(
+  return showAppSheet<void>(
     context: context,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
     builder: (ctx) => ValueListenableBuilder<CloudSyncState>(

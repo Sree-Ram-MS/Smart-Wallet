@@ -11,6 +11,7 @@ import '../../providers/providers.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/category_icon.dart';
 import '../../widgets/account_icon.dart';
+import '../../core/layout/responsive.dart';
 
 const _uuid = Uuid();
 
@@ -53,9 +54,9 @@ class PlannedPaymentsScreen extends ConsumerWidget {
         context.go('/dashboard');
       },
       child: Scaffold(
-        drawer: const AppDrawer(),
+        drawer: context.isWide ? null : const AppDrawer(),
         appBar: AppBar(
-          leading: Builder(
+          leading: context.isWide ? null : Builder(
             builder: (ctx) => IconButton(
               icon: const Icon(Icons.menu_rounded),
               onPressed: () => Scaffold.of(ctx).openDrawer(),
@@ -81,7 +82,7 @@ class PlannedPaymentsScreen extends ConsumerWidget {
                   ],
                 ),
               )
-            : ListView.builder(
+            : ResponsiveList.builder(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
                 itemCount: payments.length,
                 itemBuilder: (ctx, i) {
@@ -304,7 +305,7 @@ class PlannedPaymentsScreen extends ConsumerWidget {
 
   void _showAddSheet(BuildContext context, WidgetRef ref, List<Account> accounts,
       List<Category> categories, {PlannedPayment? existing}) {
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       isScrollControlled: true,
       builder: (_) => _PlannedPaymentSheet(

@@ -9,6 +9,7 @@ import '../../widgets/add_transaction_sheet.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/category_icon.dart';
 import '../../widgets/account_icon.dart';
+import '../../core/layout/responsive.dart';
 
 class SplitBillsScreen extends ConsumerWidget {
   const SplitBillsScreen({super.key});
@@ -55,9 +56,9 @@ class SplitBillsScreen extends ConsumerWidget {
       child: DefaultTabController(
         length: 3,
         child: Scaffold(
-          drawer: const AppDrawer(),
+          drawer: context.isWide ? null : const AppDrawer(),
           appBar: AppBar(
-            leading: Builder(
+            leading: context.isWide ? null : Builder(
               builder: (ctx) => IconButton(
                 icon: const Icon(Icons.menu_rounded),
                 onPressed: () => Scaffold.of(ctx).openDrawer(),
@@ -73,7 +74,7 @@ class SplitBillsScreen extends ConsumerWidget {
             ),
           ),
           floatingActionButton: FloatingActionButton(
-            onPressed: () => showModalBottomSheet(
+            onPressed: () => showAppSheet(
               context: context,
               isScrollControlled: true,
               shape: const RoundedRectangleBorder(
@@ -214,7 +215,7 @@ class _SplitList extends StatelessWidget {
       );
     }
 
-    return ListView.separated(
+    return ResponsiveList.separated(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
       itemCount: items.length,
       separatorBuilder: (_, index) => const SizedBox(height: 12),
@@ -469,7 +470,7 @@ class _SplitCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton.icon(
-                  onPressed: () => showModalBottomSheet(
+                  onPressed: () => showAppSheet(
                     context: context,
                     isScrollControlled: true,
                     shape: const RoundedRectangleBorder(
@@ -495,7 +496,7 @@ class _SplitCard extends StatelessWidget {
       selectedAccId = accounts.first.id;
     }
 
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(

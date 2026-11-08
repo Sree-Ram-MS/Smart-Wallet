@@ -12,6 +12,7 @@ import '../../models/models.dart';
 import '../../providers/providers.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/category_icon.dart';
+import '../../core/layout/responsive.dart';
 
 class ConfigScreen extends ConsumerWidget {
   const ConfigScreen({super.key});
@@ -31,9 +32,9 @@ class ConfigScreen extends ConsumerWidget {
       child: DefaultTabController(
         length: 2,
         child: Scaffold(
-          drawer: const AppDrawer(),
+          drawer: context.isWide ? null : const AppDrawer(),
           appBar: AppBar(
-            leading: Builder(
+            leading: context.isWide ? null : Builder(
               builder: (ctx) => IconButton(
                 icon: const Icon(Icons.menu_rounded),
                 onPressed: () => Scaffold.of(ctx).openDrawer(),
@@ -52,11 +53,14 @@ class ConfigScreen extends ConsumerWidget {
               child: const Icon(Icons.add_rounded, size: 28),
             );
           }),
-          body: TabBarView(
-            children: [
-              _CatList(items: expense, type: 'expense', ref: ref),
-              _CatList(items: income, type: 'income', ref: ref),
-            ],
+          body: ContentWidth(
+            maxWidth: 1000,
+            child: TabBarView(
+              children: [
+                _CatList(items: expense, type: 'expense', ref: ref),
+                _CatList(items: income, type: 'income', ref: ref),
+              ],
+            ),
           ),
         ),
       ),
@@ -70,7 +74,7 @@ class ConfigScreen extends ConsumerWidget {
     Category? existing,
     String? initialParentId,
   }) {
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -210,7 +214,7 @@ class _CatList extends StatelessWidget {
                               tooltip: 'Add Subcategory under ${parent.name}',
                               icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.primary, size: 22),
                               onPressed: () {
-                                showModalBottomSheet(
+                                showAppSheet(
                                   context: context,
                                   isScrollControlled: true,
                                   shape: const RoundedRectangleBorder(
@@ -229,7 +233,7 @@ class _CatList extends StatelessWidget {
                               tooltip: 'Edit Category',
                               icon: const Icon(Icons.edit_outlined, size: 20),
                               onPressed: () {
-                                showModalBottomSheet(
+                                showAppSheet(
                                   context: context,
                                   isScrollControlled: true,
                                   shape: const RoundedRectangleBorder(
@@ -259,7 +263,7 @@ class _CatList extends StatelessWidget {
                               return InkWell(
                                 borderRadius: BorderRadius.circular(10),
                                 onTap: () {
-                                  showModalBottomSheet(
+                                  showAppSheet(
                                     context: context,
                                     isScrollControlled: true,
                                     shape: const RoundedRectangleBorder(
@@ -342,7 +346,7 @@ class _CatList extends StatelessWidget {
                         title: Text(sub.name, style: const TextStyle(fontWeight: FontWeight.w600)),
                         trailing: const Icon(Icons.edit_outlined, size: 18),
                         onTap: () {
-                          showModalBottomSheet(
+                          showAppSheet(
                             context: context,
                             isScrollControlled: true,
                             shape: const RoundedRectangleBorder(
