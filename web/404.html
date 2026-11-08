@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Smart Wallet</title>
+  <script>
+    // GitHub Pages serves this for unknown paths. The app uses hash URLs
+    // (/Smart-Wallet/#/dashboard), so send the visitor back to the app root.
+    var segment = window.location.pathname.split('/')[1];
+    window.location.replace('/' + (segment ? segment + '/' : ''));
+  </script>
+</head>
+<body></body>
+</html>
