@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../providers/providers.dart';
 import '../../services/auth_service.dart';
+import '../../services/cloud_sync_service.dart';
+import '../../widgets/google_web_button.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -14,6 +18,29 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _loading = false;
+  StreamSubscription? _webAuthSub;
+
+  @override
+  void initState() {
+    super.initState();
+    if (kIsWeb) {
+      // Web: the GIS button / One Tap report the user through this stream.
+      _webAuthSub = AuthService.googleSignIn.onCurrentUserChanged.listen((account) async {
+        if (account == null || !mounted) return;
+        final user = await AuthService.saveWebAccount(account);
+        if (!mounted) return;
+        await ref.read(userProvider.notifier).setUser(user);
+        if (mounted) context.go('/dashboard');
+        unawaited(CloudSyncService.instance.start());
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _webAuthSub?.cancel();
+    super.dispose();
+  }
 
   Future<void> _signInWithGoogle() async {
     setState(() => _loading = true);
@@ -22,6 +49,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (user != null && mounted) {
         ref.read(userProvider.notifier).setUser(user);
         context.go('/dashboard');
+        unawaited(CloudSyncService.instance.start());
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Sign-in failed. Try again.')),
@@ -137,7 +165,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ...[
                     ('💳', 'Multiple Accounts'),
                     ('📊', 'Spending Charts'),
-                    ('🔒', 'Biometric Lock'),
+                    kIsWeb ? ('☁️', 'Google Drive Sync') : ('🔒', 'Biometric Lock'),
                   ].asMap().entries.map((e) {
                     final delay = 400 + e.key * 100;
                     return Padding(
@@ -171,7 +199,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                   const Spacer(),
 
-                  // Google Sign In
+                  // Google Sign In (web: official GIS button)
+                  if (kIsWeb)
+                    SizedBox(
+                      height: 56,
+                      child: Center(child: buildGoogleWebButton()),
+                    ).animate().fadeIn(delay: 700.ms, duration: 500.ms)
+                  else
                   SizedBox(
                     width: double.infinity,
                     height: 56,
@@ -236,7 +270,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                   const SizedBox(height: 12),
                   Text(
-                    'All data stored locally on your device',
+                    kIsWeb
+                        ? 'Sign in with Google to sync with your phone via Google Drive'
+                        : 'All data stored locally on your device',
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall
