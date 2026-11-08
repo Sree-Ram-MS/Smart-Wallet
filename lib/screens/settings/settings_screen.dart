@@ -1,10 +1,9 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:uuid/uuid.dart';
+import '../../core/platform/platform_helpers.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/utils.dart';
 import '../../providers/providers.dart';
@@ -45,15 +44,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       );
       if (picked == null) return;
 
-      final appDir = await getApplicationDocumentsDirectory();
-      final photoDir = Directory('${appDir.path}/profile_photos');
-      if (!await photoDir.exists()) {
-        await photoDir.create(recursive: true);
-      }
-
-      final ext = picked.path.split('.').last;
-      final targetPath = '${photoDir.path}/profile_${const Uuid().v4()}.$ext';
-      await File(picked.path).copy(targetPath);
+      final targetPath = await persistPickedImage(
+        folder: 'profile_photos',
+        prefix: 'profile_',
+        sourceName: picked.name,
+        sourcePath: kIsWeb ? null : picked.path,
+        readBytes: picked.readAsBytes,
+      );
 
       final user = ref.read(userProvider);
       if (user != null) {
@@ -393,7 +390,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     const SizedBox(height: 8),
 
-                    // Biometric
+                    // Biometric (device feature, hidden on web)
+                    if (!kIsWeb)
                     SwitchListTile(
                       value: user.biometricEnabled,
                       onChanged: (v) async {
@@ -420,7 +418,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Notifications & Reminders
+            // Notifications & Reminders (Android/iOS only, hidden on web)
+            if (!kIsWeb)
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),

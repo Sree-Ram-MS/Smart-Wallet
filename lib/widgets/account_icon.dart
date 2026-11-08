@@ -1,5 +1,5 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
+import '../core/platform/platform_helpers.dart';
 import '../models/models.dart';
 
 class AccountIcon extends StatelessWidget {
@@ -30,12 +30,12 @@ class AccountIcon extends StatelessWidget {
         : (account?.emoji != null && account!.emoji.isNotEmpty ? account!.emoji : defaultEmoji);
 
     if (effectiveImagePath != null && effectiveImagePath.isNotEmpty) {
-      final file = File(effectiveImagePath);
-      if (file.existsSync()) {
+      final provider = localImageProvider(effectiveImagePath);
+      if (provider != null) {
         return ClipRRect(
           borderRadius: borderRadius ?? BorderRadius.circular(size * 0.25),
-          child: Image.file(
-            file,
+          child: Image(
+            image: provider,
             width: size,
             height: size,
             fit: BoxFit.cover,

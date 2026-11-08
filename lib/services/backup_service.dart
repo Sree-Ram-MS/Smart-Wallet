@@ -1,10 +1,8 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
+import '../core/platform/platform_helpers.dart';
 import '../models/models.dart';
 import 'hive_service.dart';
 
@@ -184,8 +182,9 @@ class BackupService {
     };
   }
 
-  /// Exports database to a `.smartwallet` or `.json` file with optional encryption
-  static Future<File> createBackupFile({String? password, String format = 'smartwallet'}) async {
+  /// Builds the backup container (`.smartwallet` or `.json`) as bytes, with
+  /// optional password encryption. Works on every platform (no dart:io).
+  static Uint8List createBackupBytes({String? password, String format = 'smartwallet'}) {
     final snapshot = createDatabaseSnapshot();
     final jsonString = jsonEncode(snapshot);
     final checksum = sha256.convert(utf8.encode(jsonString)).toString();
@@ -217,38 +216,39 @@ class BackupService {
       fileContent = isJson ? const JsonEncoder.withIndent('  ').convert(map) : jsonEncode(map);
     }
 
-    final dir = await getApplicationDocumentsDirectory();
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final ext = isJson ? 'json' : 'smartwallet';
-    final fileName = 'smart_wallet_backup_$timestamp.$ext';
-    final file = File('${dir.path}/$fileName');
-    await file.writeAsString(fileContent);
+    return Uint8List.fromList(utf8.encode(fileContent));
+  }
+
+  /// File name used for exported backups.
+  static String backupFileName({String format = 'smartwallet'}) {
+    final ext = format.toLowerCase() == 'json' ? 'json' : 'smartwallet';
+    return 'smart_wallet_backup_${DateTime.now().millisecondsSinceEpoch}.$ext';
+  }
+
+  /// Export & share (native share sheet) or download (web) a backup file.
+  static Future<void> shareBackup({String? password, String format = 'smartwallet'}) async {
+    final bytes = createBackupBytes(password: password, format: format);
+    final isJson = format.toLowerCase() == 'json';
 
     // Save last backup timestamp
     try {
       await HiveService.settingsBox.put('last_backup_time', DateTime.now().toIso8601String());
     } catch (_) {}
 
-    return file;
-  }
-
-  /// 1-Tap Google Drive & Cloud Share
-  static Future<void> shareBackup({String? password, String format = 'smartwallet'}) async {
-    final file = await createBackupFile(password: password, format: format);
-    await SharePlus.instance.share(
-      ShareParams(
-        files: [XFile(file.path)],
-        subject: format.toLowerCase() == 'json' ? 'Smart Wallet JSON Backup' : 'Smart Wallet Encrypted Backup',
-        text: 'Smart Wallet Backup • ${DateTime.now().toString().split('.').first}',
-      ),
+    await shareOrDownloadFile(
+      bytes: bytes,
+      fileName: backupFileName(format: format),
+      mimeType: isJson ? 'application/json' : 'application/octet-stream',
+      subject: isJson ? 'Smart Wallet JSON Backup' : 'Smart Wallet Encrypted Backup',
+      text: 'Smart Wallet Backup • ${DateTime.now().toString().split('.').first}',
     );
   }
 
   // ─── Import & Inspection ───────────────────────────────────────────────────
 
-  /// Inspects a `.smartwallet` file to check whether it is encrypted or plain
-  static Future<({bool isEncrypted, String createdAt})> inspectFile(File file) async {
-    final raw = await file.readAsString();
+  /// Inspects backup bytes to check whether they are encrypted or plain
+  static ({bool isEncrypted, String createdAt}) inspectBytes(List<int> bytes) {
+    final raw = utf8.decode(bytes);
     final json = jsonDecode(raw) as Map<String, dynamic>;
     final format = json['format']?.toString() ?? '';
     final isEncrypted = format == _magicHeaderEncrypted;
@@ -257,8 +257,8 @@ class BackupService {
   }
 
   /// Decodes and previews backup data (with password if encrypted)
-  static Future<BackupPreviewInfo> loadBackupPreview(File file, {String? password}) async {
-    final raw = await file.readAsString();
+  static Future<BackupPreviewInfo> loadBackupPreview(List<int> bytes, {String? password}) async {
+    final raw = utf8.decode(bytes);
     final json = jsonDecode(raw) as Map<String, dynamic>;
     final format = json['format']?.toString() ?? '';
 
@@ -540,7 +540,7 @@ class BackupService {
     final iv = Uint8List.fromList(List.generate(16, (_) => rng.nextInt(256)));
     final key = _deriveKey(password, salt);
 
-    final plainBytes = gzip.encode(utf8.encode(plainText));
+    final plainBytes = gzipEncode(utf8.encode(plainText));
     final cipherBytes = Uint8List(plainBytes.length);
 
     // Keystream generation using HMAC-SHA256 in counter mode
@@ -603,7 +603,7 @@ class BackupService {
       plainBytes[i] = cipherBytes[i] ^ blockKey[i % 32];
     }
 
-    final decompressed = gzip.decode(plainBytes);
+    final decompressed = gzipDecode(plainBytes);
     return utf8.decode(decompressed);
   }
 }

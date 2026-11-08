@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../screens/auth/login_screen.dart';
@@ -17,6 +18,9 @@ import '../../services/hive_service.dart';
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 
+// URLs: Flutter web uses hash URLs (/#/dashboard) by default, which is what we
+// want on GitHub Pages: a page refresh always loads index.html. Don't call
+// usePathUrlStrategy() unless the host rewrites unknown paths to index.html.
 final appRouter = GoRouter(
   navigatorKey: rootNavigatorKey,
   initialLocation: _getInitialRoute(),
@@ -40,6 +44,7 @@ final appRouter = GoRouter(
 String _getInitialRoute() {
   if (!AuthService.isLoggedIn) return '/login';
   final user = HiveService.getUser();
-  if (user != null && user.biometricEnabled) return '/biometric';
+  // Biometric lock is a device feature (local_auth); not available on web.
+  if (!kIsWeb && user != null && user.biometricEnabled) return '/biometric';
   return '/dashboard';
 }

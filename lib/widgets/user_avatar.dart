@@ -1,6 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../core/platform/platform_helpers.dart';
 import '../core/theme/app_colors.dart';
 import '../models/models.dart';
 
@@ -39,11 +39,7 @@ class UserAvatar extends StatelessWidget {
       if (effectivePhoto.startsWith('http://') || effectivePhoto.startsWith('https://')) {
         imageProvider = CachedNetworkImageProvider(effectivePhoto);
       } else {
-        final cleanPath = effectivePhoto.replaceFirst('file://', '');
-        final file = File(cleanPath);
-        if (file.existsSync()) {
-          imageProvider = FileImage(file);
-        }
+        imageProvider = localImageProvider(effectivePhoto);
       }
     }
 

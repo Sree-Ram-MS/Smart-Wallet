@@ -1,12 +1,11 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:uuid/uuid.dart';
 import 'package:flex_color_picker/flex_color_picker.dart';
+import '../../core/platform/platform_helpers.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/models.dart';
 import '../../providers/providers.dart';
@@ -70,14 +69,12 @@ class _AddAccountSheetState extends State<AddAccountSheet> {
         imageQuality: 85,
       );
       if (picked != null) {
-        final appDir = await getApplicationDocumentsDirectory();
-        final iconsDir = Directory('${appDir.path}/account_icons');
-        if (!iconsDir.existsSync()) {
-          iconsDir.createSync(recursive: true);
-        }
-        final ext = picked.path.split('.').last;
-        final targetPath = '${iconsDir.path}/${const Uuid().v4()}.$ext';
-        await File(picked.path).copy(targetPath);
+        final targetPath = await persistPickedImage(
+          folder: 'account_icons',
+          sourceName: picked.name,
+          sourcePath: kIsWeb ? null : picked.path,
+          readBytes: picked.readAsBytes,
+        );
         setState(() {
           _imagePath = targetPath;
           _showEmojiPicker = false;
@@ -171,7 +168,7 @@ class _AddAccountSheetState extends State<AddAccountSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final hasCustomImage = _imagePath != null && _imagePath!.isNotEmpty && File(_imagePath!).existsSync();
+    final hasCustomImage = localImageExists(_imagePath);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Padding(
@@ -239,8 +236,8 @@ class _AddAccountSheetState extends State<AddAccountSheet> {
                                 child: hasCustomImage
                                     ? ClipRRect(
                                         borderRadius: BorderRadius.circular(16),
-                                        child: Image.file(
-                                          File(_imagePath!),
+                                        child: Image(
+                                          image: localImageProvider(_imagePath)!,
                                           width: 60,
                                           height: 60,
                                           fit: BoxFit.cover,

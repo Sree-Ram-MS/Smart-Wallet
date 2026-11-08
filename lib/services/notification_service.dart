@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -19,8 +18,11 @@ class NotificationService {
       'Notifications for daily transaction logging and upcoming payment alerts';
 
   /// Initialize local notification plugin and configure timezones
+  /// Local notifications are not supported on the web build.
+  static bool get isSupported => !kIsWeb;
+
   static Future<void> init() async {
-    if (_initialized) return;
+    if (_initialized || !isSupported) return;
 
     try {
       tz.initializeTimeZones();
@@ -51,7 +53,7 @@ class NotificationService {
       );
 
       // Create notification channel and request permissions on Android
-      if (!kIsWeb && Platform.isAndroid) {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
         final androidImpl = _notifications.resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
 
@@ -160,6 +162,7 @@ class NotificationService {
     required String body,
     String? payload,
   }) async {
+    if (!isSupported) return;
     await init();
     try {
       await _notifications.show(
@@ -179,6 +182,7 @@ class NotificationService {
     required int hour,
     required int minute,
   }) async {
+    if (!isSupported) return;
     await init();
     try {
       await cancelDailyReminder();
@@ -216,6 +220,7 @@ class NotificationService {
 
   /// Cancel the daily transaction reminder
   static Future<void> cancelDailyReminder() async {
+    if (!isSupported) return;
     try {
       await _notifications.cancel(id: _dailyReminderNotificationId);
     } catch (e) {
@@ -229,6 +234,7 @@ class NotificationService {
     int daysBefore, {
     bool enabled = true,
   }) async {
+    if (!isSupported) return;
     await init();
     if (!enabled) {
       for (int i = 200; i < 500; i++) {
@@ -287,6 +293,7 @@ class NotificationService {
     required UserProfile? user,
     required List<PlannedPayment> payments,
   }) async {
+    if (!isSupported) return;
     if (user == null) return;
     await init();
 

@@ -1,5 +1,5 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
+import '../core/platform/platform_helpers.dart';
 import '../models/models.dart';
 
 class CategoryIcon extends StatelessWidget {
@@ -31,12 +31,12 @@ class CategoryIcon extends StatelessWidget {
 
     // Check if custom image path is provided and exists
     if (effectiveImagePath != null && effectiveImagePath.isNotEmpty) {
-      final file = File(effectiveImagePath);
-      if (file.existsSync()) {
+      final provider = localImageProvider(effectiveImagePath);
+      if (provider != null) {
         return ClipRRect(
           borderRadius: borderRadius ?? BorderRadius.circular(size * 0.25),
-          child: Image.file(
-            file,
+          child: Image(
+            image: provider,
             width: size,
             height: size,
             fit: BoxFit.cover,
@@ -48,13 +48,12 @@ class CategoryIcon extends StatelessWidget {
 
     // Check if icon string itself is a file path
     if (effectiveIcon.startsWith('/') || effectiveIcon.contains('\\') || effectiveIcon.startsWith('file:')) {
-      final cleanPath = effectiveIcon.replaceFirst('file://', '');
-      final file = File(cleanPath);
-      if (file.existsSync()) {
+      final provider = localImageProvider(effectiveIcon);
+      if (provider != null) {
         return ClipRRect(
           borderRadius: borderRadius ?? BorderRadius.circular(size * 0.25),
-          child: Image.file(
-            file,
+          child: Image(
+            image: provider,
             width: size,
             height: size,
             fit: BoxFit.cover,

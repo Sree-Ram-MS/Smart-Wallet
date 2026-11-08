@@ -7,6 +7,7 @@ class WidgetService {
   static const String androidWidgetName = 'QuickAddWidgetProvider';
 
   static Future<void> init() async {
+    if (kIsWeb) return; // Home screen widgets are Android/iOS only.
     try {
       await HomeWidget.setAppGroupId(appGroupId);
     } catch (e) {
@@ -18,6 +19,7 @@ class WidgetService {
     required double netBalance,
     required String currency,
   }) async {
+    if (kIsWeb) return;
     try {
       final symbol = CurrencyUtil.symbol(currency);
       final isNegative = netBalance < 0;

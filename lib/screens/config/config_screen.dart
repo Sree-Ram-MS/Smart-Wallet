@@ -1,13 +1,12 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:uuid/uuid.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart' hide Category, CategoryIcon;
 import 'package:flex_color_picker/flex_color_picker.dart';
+import '../../core/platform/platform_helpers.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/models.dart';
 import '../../providers/providers.dart';
@@ -428,17 +427,18 @@ class _CategorySheetState extends State<_CategorySheet> {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
         allowMultiple: false,
+        withData: kIsWeb,
       );
-      if (result != null && result.files.single.path != null) {
-        final originalFile = File(result.files.single.path!);
-        final appDir = await getApplicationDocumentsDirectory();
-        final iconsDir = Directory('${appDir.path}/category_icons');
-        if (!await iconsDir.exists()) {
-          await iconsDir.create(recursive: true);
-        }
-        final ext = originalFile.path.split('.').last;
-        final targetPath = '${iconsDir.path}/${const Uuid().v4()}.$ext';
-        await originalFile.copy(targetPath);
+      final picked = result?.files.single;
+      // On the web file_picker gives bytes only (path is unavailable).
+      final sourcePath = (picked == null || kIsWeb) ? null : picked.path;
+      if (picked != null && (sourcePath != null || picked.bytes != null)) {
+        final targetPath = await persistPickedImage(
+          folder: 'category_icons',
+          sourceName: picked.name,
+          sourcePath: sourcePath,
+          readBytes: picked.bytes == null ? null : () async => picked.bytes!,
+        );
         setState(() {
           _imagePath = targetPath;
           _showEmoji = false;
@@ -533,7 +533,7 @@ class _CategorySheetState extends State<_CategorySheet> {
             c.id != widget.existing?.id)
         .toList();
 
-    final hasCustomImage = _imagePath != null && _imagePath!.isNotEmpty && File(_imagePath!).existsSync();
+    final hasCustomImage = localImageExists(_imagePath);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Padding(
@@ -605,8 +605,8 @@ class _CategorySheetState extends State<_CategorySheet> {
                               child: hasCustomImage
                                   ? ClipRRect(
                                       borderRadius: BorderRadius.circular(16),
-                                      child: Image.file(
-                                        File(_imagePath!),
+                                      child: Image(
+                                        image: localImageProvider(_imagePath)!,
                                         width: 60,
                                         height: 60,
                                         fit: BoxFit.cover,
