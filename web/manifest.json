@@ -1,23 +1,31 @@
 {
-    "name": "smart_wallet",
-    "short_name": "smart_wallet",
+    "name": "Smart Wallet",
+    "short_name": "Smart Wallet",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#0D0E1A",
+    "theme_color": "#0D0E1A",
+    "description": "Personal finance & wallet tracking: accounts, cards, income and expenses, debts, split bills and planned payments, synced with Google Drive.",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {
             "src": "icons/Icon-192.png",
             "sizes": "192x192",
-            "type": "image/png"
+            "type": "image/png",
+            "purpose": "any"
         },
         {
             "src": "icons/Icon-512.png",
             "sizes": "512x512",
-            "type": "image/png"
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "icons/apple-touch-icon.png",
+            "sizes": "180x180",
+            "type": "image/png",
+            "purpose": "any"
         },
         {
             "src": "icons/Icon-maskable-192.png",
@@ -31,5 +39,10 @@
             "type": "image/png",
             "purpose": "maskable"
         }
+    ],
+    "id": "/Smart-Wallet/",
+    "categories": [
+        "finance",
+        "productivity"
     ]
 }
