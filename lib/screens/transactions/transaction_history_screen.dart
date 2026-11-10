@@ -1251,6 +1251,11 @@ class _TxnListTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cat = categories.firstWhereOrNull((c) => c.id == txn.categoryId);
     final acc = accounts.firstWhereOrNull((a) => a.id == txn.accountId);
+    final isTransfer = txn.type == 'transfer';
+    final toAcc = isTransfer ? accounts.firstWhereOrNull((a) => a.id == txn.toAccountId) : null;
+    final title = isTransfer
+        ? '${acc?.name ?? 'Unknown'} → ${toAcc?.name ?? 'Unknown'}'
+        : (cat?.name ?? (txn.note.isNotEmpty ? txn.note : txn.type));
     final color = txn.type == 'income'
         ? AppColors.income
         : txn.type == 'expense'
@@ -1279,15 +1284,17 @@ class _TxnListTile extends StatelessWidget {
           ),
         ),
         title: Text(
-          cat?.name ?? (txn.note.isNotEmpty ? txn.note : txn.type),
+          title,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (txn.note.isNotEmpty)
-              Text(txn.note, style: Theme.of(context).textTheme.bodySmall, maxLines: 1),
-            Text('${acc?.name ?? ''} • ${DateUtil.formatDate(txn.date)}',
+              Text(txn.note, style: Theme.of(context).textTheme.bodySmall, maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(isTransfer ? 'Transfer • ${DateUtil.formatDate(txn.date)}' : '${acc?.name ?? ''} • ${DateUtil.formatDate(txn.date)}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11)),
           ],
         ),

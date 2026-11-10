@@ -1358,7 +1358,20 @@ class _TransactionTile extends ConsumerWidget {
             if (cat != null)
               _DetailRow(icon: Icons.category_rounded, label: 'Category', value: '${cat.icon} ${cat.name}'),
             if (acc != null)
-              _DetailRow(icon: Icons.account_balance_wallet_rounded, label: 'Account', value: '${acc.emoji} ${acc.name}'),
+              _DetailRow(
+                icon: Icons.account_balance_wallet_rounded,
+                label: txn.type == 'transfer' ? 'From Account' : 'Account',
+                value: '${acc.emoji} ${acc.name}',
+              ),
+            if (txn.type == 'transfer')
+              _DetailRow(
+                icon: Icons.arrow_forward_rounded,
+                label: 'To Account',
+                value: () {
+                  final to = accounts.where((a) => a.id == txn.toAccountId).firstOrNull;
+                  return to != null ? '${to.emoji} ${to.name}' : 'Unknown';
+                }(),
+              ),
             _DetailRow(icon: Icons.calendar_today_rounded, label: 'Date', value: DateUtil.formatDate(txn.date)),
             if (txn.note.isNotEmpty)
               _DetailRow(icon: Icons.note_rounded, label: 'Note', value: txn.note),
@@ -1460,6 +1473,14 @@ class _TransactionTile extends ConsumerWidget {
 
     final sign = txn.type == 'income' ? '+' : txn.type == 'expense' ? '-' : '↔';
     final linkedDebt = ref.watch(debtLinkedTxnProvider)[txn.id];
+    final isTransfer = txn.type == 'transfer';
+    final toAcc = isTransfer ? accounts.where((a) => a.id == txn.toAccountId).firstOrNull : null;
+    final title = isTransfer
+        ? '${acc?.name ?? 'Unknown'} → ${toAcc?.name ?? 'Unknown'}'
+        : (cat?.name ?? (txn.note.isNotEmpty ? txn.note : txn.type));
+    final subtitle = isTransfer
+        ? '${txn.note.isNotEmpty ? txn.note : 'Transfer'} • ${DateUtil.timeAgo(txn.date)}'
+        : '${acc?.name ?? ''} • ${DateUtil.timeAgo(txn.date)}';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -1482,14 +1503,16 @@ class _TransactionTile extends ConsumerWidget {
           ),
         ),
         title: Text(
-          cat?.name ?? (txn.note.isNotEmpty ? txn.note : txn.type),
+          title,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
         subtitle: Text(
-          '${acc?.name ?? ''} • ${DateUtil.timeAgo(txn.date)}',
+          subtitle,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,

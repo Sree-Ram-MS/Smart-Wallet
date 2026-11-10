@@ -496,6 +496,24 @@ final enabledAccountIdsProvider = Provider<Set<String>>((ref) {
   return accounts.where((a) => a.isEnabledForCalc).map((a) => a.id).toSet();
 });
 
+/// True when [t] involves at least one account counted in the wallet. A
+/// transfer counts when either its source or its destination is enabled.
+bool txnTouchesEnabled(Transaction t, Set<String> enabledIds) {
+  if (enabledIds.contains(t.accountId)) return true;
+  return t.type == 'transfer' && t.toAccountId != null && enabledIds.contains(t.toAccountId);
+}
+
+/// How a transfer changes the total of enabled accounts: +amount when it
+/// moves money in from a disabled account, -amount when it moves money out to
+/// one, and 0 when both sides (or neither side) are enabled.
+double transferEffectOnEnabled(Transaction t, Set<String> enabledIds) {
+  if (t.type != 'transfer') return 0;
+  final fromEnabled = enabledIds.contains(t.accountId);
+  final toEnabled = t.toAccountId != null && enabledIds.contains(t.toAccountId);
+  if (fromEnabled == toEnabled) return 0;
+  return toEnabled ? t.amount : -t.amount;
+}
+
 /// Net wallet balance (enabled accounts only)
 final netWalletProvider = Provider<double>((ref) {
   final accounts = ref.watch(accountsProvider);
@@ -507,13 +525,18 @@ final monthlyInflowProvider = Provider<double>((ref) {
   final txns = ref.watch(transactionsProvider);
   final enabledIds = ref.watch(enabledAccountIdsProvider);
   final now = DateTime.now();
-  return txns
-      .where((t) =>
-          enabledIds.contains(t.accountId) &&
-          t.type == 'income' &&
-          t.date.year == now.year &&
-          t.date.month == now.month)
-      .fold(0.0, (s, t) => s + t.amount);
+  double total = 0;
+  for (final t in txns) {
+    if (t.date.year != now.year || t.date.month != now.month) continue;
+    if (t.type == 'income' && enabledIds.contains(t.accountId)) {
+      total += t.amount;
+    } else if (t.type == 'transfer') {
+      // Money moved in from an account that is not counted in the wallet.
+      final effect = transferEffectOnEnabled(t, enabledIds);
+      if (effect > 0) total += effect;
+    }
+  }
+  return total;
 });
 
 /// Monthly outflow for current month (enabled accounts only)
@@ -521,13 +544,18 @@ final monthlyOutflowProvider = Provider<double>((ref) {
   final txns = ref.watch(transactionsProvider);
   final enabledIds = ref.watch(enabledAccountIdsProvider);
   final now = DateTime.now();
-  return txns
-      .where((t) =>
-          enabledIds.contains(t.accountId) &&
-          t.type == 'expense' &&
-          t.date.year == now.year &&
-          t.date.month == now.month)
-      .fold(0.0, (s, t) => s + t.amount);
+  double total = 0;
+  for (final t in txns) {
+    if (t.date.year != now.year || t.date.month != now.month) continue;
+    if (t.type == 'expense' && enabledIds.contains(t.accountId)) {
+      total += t.amount;
+    } else if (t.type == 'transfer') {
+      // Money moved out to an account that is not counted in the wallet.
+      final effect = transferEffectOnEnabled(t, enabledIds);
+      if (effect < 0) total += -effect;
+    }
+  }
+  return total;
 });
 
 /// Monthly savings (enabled accounts only)
@@ -539,7 +567,7 @@ final monthlySavingsProvider = Provider<double>((ref) {
 final recentTransactionsProvider = Provider<List<Transaction>>((ref) {
   final txns = ref.watch(transactionsProvider);
   final enabledIds = ref.watch(enabledAccountIdsProvider);
-  return txns.where((t) => enabledIds.contains(t.accountId)).take(5).toList();
+  return txns.where((t) => txnTouchesEnabled(t, enabledIds)).take(5).toList();
 });
 
 /// Maps a transaction id to the Lent/Borrowed record it was created for
