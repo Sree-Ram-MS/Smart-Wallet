@@ -210,6 +210,7 @@ class DebtCredit extends HiveObject {
   @HiveField(10) bool affectsAccount; // false = opening balance / historical record only
   @HiveField(11) String? transactionId;
   @HiveField(12) String? settlementTransactionId;
+  @HiveField(13) List<DebtPayment>? payments; // partial repayments (null on older records)
 
   DebtCredit({
     required this.id,
@@ -225,6 +226,45 @@ class DebtCredit extends HiveObject {
     this.affectsAccount = true,
     this.transactionId,
     this.settlementTransactionId,
+    this.payments,
+  });
+
+  /// Sum of partial repayments recorded so far.
+  double get paidAmount => (payments ?? const <DebtPayment>[]).fold(0.0, (s, p) => s + p.amount);
+
+  /// What is still owed after partial repayments (never negative).
+  double get remainingAmount {
+    final r = amount - paidAmount;
+    return r < 0.005 ? 0 : r;
+  }
+
+  bool get hasPayments => payments != null && payments!.isNotEmpty;
+
+  /// Closed because partial payments covered the whole amount (no final
+  /// settlement transaction was recorded).
+  bool get closedByPayments =>
+      status == 'closed' && hasPayments && remainingAmount == 0 &&
+      (settlementTransactionId == null || settlementTransactionId!.isEmpty);
+}
+
+// ─── DebtPayment ─────────────────────────────────────────────────────────────
+
+@HiveType(typeId: 8)
+class DebtPayment {
+  @HiveField(0) String id;
+  @HiveField(1) double amount;
+  @HiveField(2) DateTime date;
+  @HiveField(3) String accountId;
+  @HiveField(4) String? transactionId;
+  @HiveField(5) String note;
+
+  DebtPayment({
+    required this.id,
+    required this.amount,
+    required this.date,
+    required this.accountId,
+    this.transactionId,
+    this.note = '',
   });
 }
 

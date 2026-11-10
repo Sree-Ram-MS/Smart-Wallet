@@ -24,6 +24,7 @@ class HiveService {
     Hive.registerAdapter(DebtCreditAdapter());
     Hive.registerAdapter(TemplateAdapter());
     Hive.registerAdapter(SplitMemberAdapter());
+    Hive.registerAdapter(DebtPaymentAdapter());
 
     await Hive.openBox<UserProfile>(_userBox);
     await Hive.openBox<Account>(_accountsBox);
@@ -312,6 +313,8 @@ class HiveService {
 
   static Future<void> updateDebtCredit(DebtCredit old, DebtCredit updated) async {
     updated.id = old.id;
+    updated.payments ??= old.payments;
+    updated.settlementTransactionId ??= old.settlementTransactionId;
     final isLent = updated.direction == 'lent';
     final noteSuffix = updated.notes.trim().isNotEmpty ? ' (${updated.notes.trim()})' : '';
     final expectedType = isLent ? 'expense' : 'income';
@@ -375,6 +378,11 @@ class HiveService {
       }
     }
 
+    // Partial payments already cover the new amount: settle it.
+    if (updated.status == 'active' && updated.hasPayments && updated.remainingAmount == 0) {
+      updated.status = 'closed';
+    }
+
     await old.delete();
     await debtCreditBox.add(updated);
   }
@@ -395,7 +403,7 @@ class HiveService {
     if (dc.settlementTransactionId != null && dc.settlementTransactionId!.isNotEmpty) {
       settleTxn = transactionsBox.values.firstWhereOrNull((t) => t.id == dc.settlementTransactionId);
     }
-    if (settleTxn == null && dc.status == 'closed') {
+    if (settleTxn == null && dc.status == 'closed' && !dc.hasPayments) {
       final isLent = dc.direction == 'lent';
       final expectedType = isLent ? 'income' : 'expense';
       final notePrefix = isLent ? 'Debt recovered from ${dc.personName}' : 'Debt repaid to ${dc.personName}';
@@ -407,12 +415,23 @@ class HiveService {
       await deleteTransaction(settleTxn);
     }
 
+    // 3. Partial repayment transactions
+    for (final p in dc.payments ?? const <DebtPayment>[]) {
+      final id = p.transactionId;
+      if (id == null || id.isEmpty) continue;
+      final txn = transactionsBox.values.firstWhereOrNull((t) => t.id == id);
+      if (txn != null) await deleteTransaction(txn);
+    }
+
     await dc.delete();
   }
 
+  /// Settles the record. Only the amount still owed after partial payments is
+  /// recorded as the final settlement transaction.
   static Future<void> closeDebtCredit(DebtCredit dc, {String? targetAccountId, bool affectBalance = true}) async {
     if (dc.status == 'closed') return;
-    if (affectBalance) {
+    final remaining = dc.remainingAmount;
+    if (affectBalance && remaining > 0) {
       final accountId = targetAccountId ?? dc.accountId;
       final isLent = dc.direction == 'lent';
       final noteSuffix = dc.notes.trim().isNotEmpty ? ' (${dc.notes.trim()})' : '';
@@ -422,7 +441,7 @@ class HiveService {
       final txn = Transaction(
         id: '',
         type: expectedType,
-        amount: dc.amount,
+        amount: remaining,
         accountId: accountId,
         categoryId: validCategoryId,
         date: DateTime.now(),
@@ -445,7 +464,7 @@ class HiveService {
     if (dc.settlementTransactionId != null && dc.settlementTransactionId!.isNotEmpty) {
       settleTxn = transactionsBox.values.firstWhereOrNull((t) => t.id == dc.settlementTransactionId);
     }
-    if (settleTxn == null) {
+    if (settleTxn == null && !dc.hasPayments) {
       // Fallback for debts settled before settlementTransactionId tracking was introduced
       final isLent = dc.direction == 'lent';
       final expectedType = isLent ? 'income' : 'expense';
@@ -461,6 +480,75 @@ class HiveService {
 
     dc.settlementTransactionId = null;
     dc.status = 'active';
+    await dc.save();
+  }
+
+  /// Records a partial repayment. When the record affects an account, an
+  /// income (lent) or expense (borrowed) transaction is created for it. The
+  /// record closes on its own once nothing is left to pay.
+  static Future<DebtPayment> addDebtPayment(
+    DebtCredit dc, {
+    required double amount,
+    required DateTime date,
+    required String accountId,
+    String note = '',
+  }) async {
+    final payment = DebtPayment(
+      id: _uuid.v4(),
+      amount: amount,
+      date: date,
+      accountId: accountId,
+      note: note.trim(),
+    );
+    if (dc.affectsAccount) {
+      final isLent = dc.direction == 'lent';
+      final expectedType = isLent ? 'income' : 'expense';
+      final cat = _findCategory(dc.categoryId);
+      final validCategoryId = (cat != null && cat.type == expectedType) ? dc.categoryId : null;
+      final noteSuffix = payment.note.isNotEmpty ? ' (${payment.note})' : '';
+      final txn = Transaction(
+        id: '',
+        type: expectedType,
+        amount: amount,
+        accountId: accountId,
+        categoryId: validCategoryId,
+        date: date,
+        note: isLent
+            ? 'Partial payment from ${dc.personName}$noteSuffix'
+            : 'Partial payment to ${dc.personName}$noteSuffix',
+      );
+      await addTransaction(txn);
+      payment.transactionId = txn.id;
+    }
+    dc.payments = [...?dc.payments, payment];
+    if (dc.remainingAmount == 0) dc.status = 'closed';
+    await dc.save();
+    return payment;
+  }
+
+  /// Removes a partial repayment and reverses its transaction. A closed record
+  /// becomes active again (its final settlement, if any, is undone too).
+  static Future<void> deleteDebtPayment(DebtCredit dc, String paymentId) async {
+    final list = List<DebtPayment>.from(dc.payments ?? const <DebtPayment>[]);
+    final idx = list.indexWhere((p) => p.id == paymentId);
+    if (idx < 0) return;
+    final payment = list.removeAt(idx);
+    final txnId = payment.transactionId;
+    if (txnId != null && txnId.isNotEmpty) {
+      final txn = transactionsBox.values.firstWhereOrNull((t) => t.id == txnId);
+      if (txn != null) await deleteTransaction(txn);
+    }
+    final wasClosed = dc.status == 'closed';
+    final hadSettlement = dc.settlementTransactionId != null && dc.settlementTransactionId!.isNotEmpty;
+    dc.payments = list.isEmpty ? null : list;
+    if (wasClosed) {
+      if (hadSettlement) {
+        final settle = transactionsBox.values.firstWhereOrNull((t) => t.id == dc.settlementTransactionId);
+        if (settle != null) await deleteTransaction(settle);
+        dc.settlementTransactionId = null;
+      }
+      dc.status = 'active';
+    }
     await dc.save();
   }
 

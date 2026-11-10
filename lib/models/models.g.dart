@@ -204,10 +204,11 @@ class DebtCreditAdapter extends TypeAdapter<DebtCredit> {
       affectsAccount: fields[10] as bool? ?? true,
       transactionId: fields[11] as String?,
       settlementTransactionId: fields[12] as String?,
+      payments: (fields[13] as List?)?.cast<DebtPayment>(),
     );
   }
   @override void write(BinaryWriter writer, DebtCredit obj) {
-    writer.writeByte(13);
+    writer.writeByte(14);
     writer.writeByte(0); writer.write(obj.id);
     writer.writeByte(1); writer.write(obj.direction);
     writer.writeByte(2); writer.write(obj.personName);
@@ -221,6 +222,33 @@ class DebtCreditAdapter extends TypeAdapter<DebtCredit> {
     writer.writeByte(10); writer.write(obj.affectsAccount);
     writer.writeByte(11); writer.write(obj.transactionId);
     writer.writeByte(12); writer.write(obj.settlementTransactionId);
+    writer.writeByte(13); writer.write(obj.payments);
+  }
+}
+
+// ─── DebtPayment Adapter ─────────────────────────────────────────────────────
+class DebtPaymentAdapter extends TypeAdapter<DebtPayment> {
+  @override final int typeId = 8;
+  @override DebtPayment read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read()};
+    return DebtPayment(
+      id: fields[0] as String,
+      amount: (fields[1] as num).toDouble(),
+      date: fields[2] as DateTime,
+      accountId: fields[3] as String? ?? '',
+      transactionId: fields[4] as String?,
+      note: fields[5] as String? ?? '',
+    );
+  }
+  @override void write(BinaryWriter writer, DebtPayment obj) {
+    writer.writeByte(6);
+    writer.writeByte(0); writer.write(obj.id);
+    writer.writeByte(1); writer.write(obj.amount);
+    writer.writeByte(2); writer.write(obj.date);
+    writer.writeByte(3); writer.write(obj.accountId);
+    writer.writeByte(4); writer.write(obj.transactionId);
+    writer.writeByte(5); writer.write(obj.note);
   }
 }
 

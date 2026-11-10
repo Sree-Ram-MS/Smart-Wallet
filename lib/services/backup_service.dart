@@ -165,6 +165,16 @@ class BackupService {
                 'affectsAccount': d.affectsAccount,
                 'transactionId': d.transactionId,
                 'settlementTransactionId': d.settlementTransactionId,
+                'payments': d.payments
+                    ?.map((p) => {
+                          'id': p.id,
+                          'amount': p.amount,
+                          'date': p.date.toIso8601String(),
+                          'accountId': p.accountId,
+                          'transactionId': p.transactionId,
+                          'note': p.note,
+                        })
+                    .toList(),
               })
           .toList(),
       'templates': templates
@@ -464,6 +474,21 @@ class BackupService {
     final debtList = data['debtCredits'] as List? ?? [];
     for (final raw in debtList) {
       final d = raw as Map<String, dynamic>;
+      // Partial payments (absent in backups made before they existed).
+      final paymentsRaw = d['payments'] as List?;
+      final payments = paymentsRaw
+          ?.map((raw) {
+            final p = raw as Map<String, dynamic>;
+            return DebtPayment(
+              id: p['id'] ?? '',
+              amount: (p['amount'] as num?)?.toDouble() ?? 0.0,
+              date: DateTime.tryParse(p['date']?.toString() ?? '') ?? DateTime.now(),
+              accountId: p['accountId'] ?? '',
+              transactionId: p['transactionId'],
+              note: p['note'] ?? '',
+            );
+          })
+          .toList();
       final dc = DebtCredit(
         id: d['id'] ?? '',
         direction: d['direction'] ?? 'lent',
@@ -478,6 +503,7 @@ class BackupService {
         affectsAccount: d['affectsAccount'] ?? true,
         transactionId: d['transactionId'],
         settlementTransactionId: d['settlementTransactionId'],
+        payments: (payments == null || payments.isEmpty) ? null : payments,
       );
       if (!replaceAll) {
         final exists = HiveService.debtCreditBox.values.any((x) => x.id == dc.id);

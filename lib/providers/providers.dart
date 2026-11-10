@@ -443,6 +443,26 @@ class DebtCreditNotifier extends StateNotifier<List<DebtCredit>> {
     _ref.read(transactionsProvider.notifier).refresh();
   }
 
+  Future<void> addPayment(
+    DebtCredit dc, {
+    required double amount,
+    required DateTime date,
+    required String accountId,
+    String note = '',
+  }) async {
+    await HiveService.addDebtPayment(dc, amount: amount, date: date, accountId: accountId, note: note);
+    state = HiveService.getDebtCredits();
+    _ref.read(accountsProvider.notifier).refresh();
+    _ref.read(transactionsProvider.notifier).refresh();
+  }
+
+  Future<void> deletePayment(DebtCredit dc, String paymentId) async {
+    await HiveService.deleteDebtPayment(dc, paymentId);
+    state = HiveService.getDebtCredits();
+    _ref.read(accountsProvider.notifier).refresh();
+    _ref.read(transactionsProvider.notifier).refresh();
+  }
+
   Future<void> reopen(DebtCredit dc) async {
     await HiveService.reopenDebtCredit(dc);
     state = HiveService.getDebtCredits();
@@ -576,7 +596,12 @@ final debtLinkedTxnProvider = Provider<Map<String, DebtCredit>>((ref) {
   final debts = ref.watch(debtCreditProvider);
   final map = <String, DebtCredit>{};
   for (final dc in debts) {
-    for (final id in [dc.transactionId, dc.settlementTransactionId]) {
+    final ids = [
+      dc.transactionId,
+      dc.settlementTransactionId,
+      ...?dc.payments?.map((p) => p.transactionId),
+    ];
+    for (final id in ids) {
       if (id != null && id.isNotEmpty) map[id] = dc;
     }
   }

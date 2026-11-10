@@ -197,8 +197,12 @@ class _DebtList extends StatelessWidget {
       );
     }
 
-    return ResponsiveList.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
+    final isLentList = direction == 'lent';
+    final currency = ref.read(userProvider)?.baseCurrency ?? 'INR';
+    final outstanding = items.fold<double>(0.0, (s, d) => s + d.remainingAmount);
+
+    final list = ResponsiveList.builder(
+      padding: EdgeInsets.fromLTRB(16, isClosed ? 16 : 8, 16, 90),
       itemCount: items.length,
       itemBuilder: (ctx, i) {
         final d = items[i];
@@ -209,9 +213,16 @@ class _DebtList extends StatelessWidget {
 
         final isDark = Theme.of(context).brightness == Brightness.dark;
 
+        final cur = acc?.currency ?? 'INR';
+        final settledByPayments = d.closedByPayments;
+
         return Card(
           margin: const EdgeInsets.only(bottom: 10),
-          child: ListTile(
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+          ListTile(
             leading: CircleAvatar(
               backgroundColor: color.withValues(alpha: 0.15),
               child: Text(
@@ -293,10 +304,15 @@ class _DebtList extends StatelessWidget {
                       style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 15),
                     ),
                     if (isClosed)
-                      const Text('Settled ✓', style: TextStyle(fontSize: 11, color: AppColors.income, fontWeight: FontWeight.bold)),
+                      const Text('Settled ✓', style: TextStyle(fontSize: 11, color: AppColors.income, fontWeight: FontWeight.bold))
+                    else if (d.hasPayments)
+                      Text(
+                        '${CurrencyUtil.format(d.remainingAmount, cur)} left',
+                        style: const TextStyle(fontSize: 11, color: AppColors.darkTextSecondary, fontWeight: FontWeight.w600),
+                      ),
                   ],
                 ),
-                if (isClosed) ...[
+                if (isClosed && !settledByPayments) ...[
                   const SizedBox(width: 4),
                   IconButton(
                     icon: const Icon(Icons.undo_rounded, color: AppColors.accent, size: 22),
@@ -309,8 +325,75 @@ class _DebtList extends StatelessWidget {
             isThreeLine: true,
             onTap: () => _showOptions(context, d),
           ),
+          if (d.hasPayments)
+            _PaymentProgress(
+              debt: d,
+              currency: cur,
+              accounts: accounts,
+              onDelete: (p) => _confirmDeletePayment(context, d, p),
+            ),
+            ],
+          ),
         ).animate().fadeIn(delay: Duration(milliseconds: i * 40), duration: 300.ms);
       },
+    );
+
+    if (isClosed) return list;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+          child: ContentWidth(
+            child: _OutstandingSummary(
+              label: isLentList ? 'Still to collect' : 'Still to repay',
+              amount: outstanding,
+              count: items.length,
+              currency: currency,
+              color: isLentList ? AppColors.income : AppColors.expense,
+            ),
+          ),
+        ),
+        Expanded(child: list),
+      ],
+    );
+  }
+
+  void _showRecordPayment(BuildContext context, DebtCredit d) {
+    showDialog(
+      context: context,
+      builder: (_) => _RecordPaymentDialog(ref: ref, debt: d, accounts: accounts),
+    );
+  }
+
+  void _confirmDeletePayment(BuildContext context, DebtCredit d, DebtPayment p) {
+    final acc = accounts.firstWhereOrNull((a) => a.id == p.accountId);
+    final amt = CurrencyUtil.format(p.amount, acc?.currency ?? 'INR');
+    final isClosedNow = d.status == 'closed';
+    showDialog(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        title: const Text('Delete Payment'),
+        content: Text(
+          'Delete the $amt payment from ${DateUtil.formatDate(p.date)}?\n\n'
+          '${p.transactionId != null ? '• Its transaction will be deleted and the account balance restored.\n' : ''}'
+          '${isClosedNow ? '• This record will move back to Active.' : '• The amount left will go up by $amt.'}',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dCtx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(dCtx);
+              await ref.read(debtCreditProvider.notifier).deletePayment(d, p.id);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(behavior: SnackBarBehavior.floating, content: Text('Payment deleted')),
+                );
+              }
+            },
+            child: const Text('Delete', style: TextStyle(color: AppColors.expense)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -318,7 +401,11 @@ class _DebtList extends StatelessWidget {
     final isLent = d.direction == 'lent';
     final acc = accounts.firstWhereOrNull((a) => a.id == d.accountId);
     final cur = acc?.currency ?? 'INR';
-    final formattedAmt = CurrencyUtil.format(d.amount, cur);
+    final settleTxn = ref
+        .read(transactionsProvider)
+        .firstWhereOrNull((t) => t.id == d.settlementTransactionId);
+    final settledAmt = settleTxn?.amount ?? (d.hasPayments ? d.remainingAmount : d.amount);
+    final formattedAmt = CurrencyUtil.format(settledAmt, cur);
 
     showDialog(
       context: context,
@@ -333,7 +420,8 @@ class _DebtList extends StatelessWidget {
         content: Text(
           'Revert this record for "${d.personName}" back to active?\n\n'
           '• Status will return to Active.\n'
-          '${d.affectsAccount ? "• The ${isLent ? 'recovery (+$formattedAmt)' : 'repayment (-$formattedAmt)'} transaction record will be deleted and account balance restored." : "• No account balance was affected."}',
+          '${d.affectsAccount ? "• The ${isLent ? 'recovery (+$formattedAmt)' : 'repayment (-$formattedAmt)'} transaction record will be deleted and account balance restored." : "• No account balance was affected."}'
+          '${d.hasPayments ? "\n• Partial payments (${CurrencyUtil.format(d.paidAmount, cur)}) are kept." : ""}',
         ),
         actions: [
           TextButton(
@@ -394,12 +482,27 @@ class _DebtList extends StatelessWidget {
               ),
               if (!isClosed) ...[
                 ListTile(
+                  leading: const Icon(Icons.payments_outlined, color: AppColors.primary),
+                  title: const Text('Record Payment'),
+                  subtitle: Text(
+                    '${isLent ? 'Part of the money came back' : 'Repay part of it'} • '
+                    '${CurrencyUtil.format(d.remainingAmount, 'INR')} left',
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showRecordPayment(context, d);
+                  },
+                ),
+                ListTile(
                   leading: const Icon(Icons.check_circle_outline_rounded, color: AppColors.income),
                   title: Text(isLent ? 'Mark as Recovered' : 'Mark as Repaid'),
                   subtitle: Text(
-                    d.affectsAccount
-                        ? (isLent ? 'Deposits money back into account balance' : 'Deducts repayment from account balance')
-                        : 'Settles this record without altering account balance',
+                    d.hasPayments
+                        ? 'Settles the remaining ${CurrencyUtil.format(d.remainingAmount, 'INR')}'
+                            '${d.affectsAccount ? (isLent ? ' into account balance' : ' from account balance') : ''}'
+                        : d.affectsAccount
+                            ? (isLent ? 'Deposits money back into account balance' : 'Deducts repayment from account balance')
+                            : 'Settles this record without altering account balance',
                   ),
                   onTap: () async {
                     Navigator.pop(ctx);
@@ -434,6 +537,12 @@ class _DebtList extends StatelessWidget {
                       ),
                     );
                   },
+                ),
+              ] else if (d.closedByPayments) ...[
+                const ListTile(
+                  leading: Icon(Icons.info_outline_rounded, color: AppColors.darkTextSecondary),
+                  title: Text('Fully paid through partial payments'),
+                  subtitle: Text('Delete a payment from its history to reopen this record'),
                 ),
               ] else ...[
                 ListTile(
@@ -514,6 +623,7 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
   DateTime? _dueDate;
   bool _affectsAccount = true;
   bool _saving = false;
+  String? _amountError;
 
   @override
   void initState() {
@@ -558,6 +668,13 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
   Future<void> _save() async {
     if (_nameCtrl.text.trim().isEmpty || _accountId == null) return;
     final amount = double.tryParse(_amountCtrl.text) ?? 0;
+    final paid = widget.existing?.paidAmount ?? 0;
+    if (amount <= 0 || amount + 0.005 < paid) {
+      setState(() => _amountError = amount <= 0
+          ? 'Enter an amount above zero'
+          : 'Already paid ${CurrencyUtil.format(paid, 'INR')}, so the amount can\'t be lower');
+      return;
+    }
     final isLent = (widget.existing?.direction ?? widget.direction) == 'lent';
     final effectiveCategoryId = _selectedSubcategoryId ?? _selectedParentCategoryId;
     setState(() => _saving = true);
@@ -577,6 +694,8 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
         notes: _notesCtrl.text.trim(),
         affectsAccount: _affectsAccount,
         transactionId: old.transactionId,
+        settlementTransactionId: old.settlementTransactionId,
+        payments: old.payments,
       );
       await widget.ref.read(debtCreditProvider.notifier).update(old, updated);
     } else {
@@ -665,8 +784,12 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
                       decoration: InputDecoration(
                         labelText: 'Amount',
                         prefixText: '${CurrencyUtil.symbol(selectedAcc?.currency ?? 'INR')} ',
+                        errorText: _amountError,
+                        helperText: (widget.existing?.hasPayments ?? false)
+                            ? '${CurrencyUtil.format(widget.existing!.paidAmount, selectedAcc?.currency ?? 'INR')} already paid'
+                            : null,
                       ),
-                      onChanged: (_) => setState(() {}),
+                      onChanged: (_) => setState(() => _amountError = null),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
@@ -905,6 +1028,368 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─── Outstanding summary (active tab) ─────────────────────────────────────────
+
+class _OutstandingSummary extends StatelessWidget {
+  final String label;
+  final double amount;
+  final int count;
+  final String currency;
+  final Color color;
+
+  const _OutstandingSummary({
+    required this.label,
+    required this.amount,
+    required this.count,
+    required this.currency,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.account_balance_wallet_outlined, color: color, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                    )),
+                const SizedBox(height: 2),
+                Text(
+                  CurrencyUtil.format(amount, currency),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: color),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '$count ${count == 1 ? 'record' : 'records'}',
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Partial payment progress + history ───────────────────────────────────────
+
+class _PaymentProgress extends StatelessWidget {
+  final DebtCredit debt;
+  final String currency;
+  final List<Account> accounts;
+  final void Function(DebtPayment) onDelete;
+
+  const _PaymentProgress({
+    required this.debt,
+    required this.currency,
+    required this.accounts,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isLent = debt.direction == 'lent';
+    final paid = debt.paidAmount;
+    final remaining = debt.remainingAmount;
+    final progress = debt.amount <= 0 ? 0.0 : (paid / debt.amount).clamp(0.0, 1.0);
+    final barColor = isLent ? AppColors.income : AppColors.primary;
+    final muted = isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final payments = List<DebtPayment>.from(debt.payments ?? const <DebtPayment>[])
+      ..sort((a, b) => b.date.compareTo(a.date));
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 6,
+              backgroundColor: isDark ? AppColors.darkCardAlt : AppColors.lightBorder,
+              valueColor: AlwaysStoppedAnimation(barColor),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${CurrencyUtil.format(paid, currency)} of ${CurrencyUtil.format(debt.amount, currency)} '
+            '${isLent ? 'received' : 'repaid'} · ${CurrencyUtil.format(remaining, currency)} left',
+            style: TextStyle(fontSize: 11.5, color: muted, fontWeight: FontWeight.w600),
+          ),
+          Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(bottom: 6),
+              dense: true,
+              visualDensity: VisualDensity.compact,
+              title: Text(
+                'Payment history (${payments.length})',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+              children: payments.map((p) {
+                final acc = accounts.firstWhereOrNull((a) => a.id == p.accountId);
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle_rounded, size: 14, color: barColor),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${DateUtil.formatDate(p.date)}${acc != null ? ' • ${acc.name}' : ''}',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (p.note.isNotEmpty)
+                              Text(p.note,
+                                  style: TextStyle(fontSize: 11, color: muted),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        CurrencyUtil.format(p.amount, acc?.currency ?? currency),
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: barColor),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.expense),
+                        tooltip: 'Delete payment',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => onDelete(p),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Record partial payment dialog ────────────────────────────────────────────
+
+class _RecordPaymentDialog extends StatefulWidget {
+  final WidgetRef ref;
+  final DebtCredit debt;
+  final List<Account> accounts;
+
+  const _RecordPaymentDialog({required this.ref, required this.debt, required this.accounts});
+
+  @override
+  State<_RecordPaymentDialog> createState() => _RecordPaymentDialogState();
+}
+
+class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
+  final _amountCtrl = TextEditingController();
+  final _noteCtrl = TextEditingController();
+  late String? _accountId;
+  DateTime _date = DateTime.now();
+  String? _error;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final remaining = widget.debt.remainingAmount;
+    _amountCtrl.text = remaining == remaining.roundToDouble()
+        ? remaining.toStringAsFixed(0)
+        : remaining.toStringAsFixed(2);
+    _accountId = widget.accounts.any((a) => a.id == widget.debt.accountId)
+        ? widget.debt.accountId
+        : (widget.accounts.isNotEmpty ? widget.accounts.first.id : null);
+  }
+
+  @override
+  void dispose() {
+    _amountCtrl.dispose();
+    _noteCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final remaining = widget.debt.remainingAmount;
+    final amount = double.tryParse(_amountCtrl.text.trim()) ?? 0;
+    if (amount <= 0) {
+      setState(() => _error = 'Enter an amount above zero');
+      return;
+    }
+    if (amount > remaining + 0.005) {
+      setState(() => _error = 'Only ${CurrencyUtil.format(remaining, _currency)} is left');
+      return;
+    }
+    if (_accountId == null) {
+      setState(() => _error = 'Choose an account');
+      return;
+    }
+    setState(() => _saving = true);
+    final willClose = (remaining - amount).abs() < 0.005;
+    await widget.ref.read(debtCreditProvider.notifier).addPayment(
+          widget.debt,
+          amount: amount > remaining ? remaining : amount,
+          date: _date,
+          accountId: _accountId!,
+          note: _noteCtrl.text,
+        );
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.pop(context);
+    final isLent = widget.debt.direction == 'lent';
+    messenger.showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text(willClose
+            ? (isLent ? 'Payment recorded. Fully recovered! 🎉' : 'Payment recorded. Fully repaid! 🎉')
+            : 'Payment recorded'),
+      ),
+    );
+  }
+
+  String get _currency =>
+      widget.accounts.firstWhereOrNull((a) => a.id == _accountId)?.currency ?? 'INR';
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.debt;
+    final isLent = d.direction == 'lent';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return AlertDialog(
+      title: Text(isLent ? 'Payment from ${d.personName}' : 'Payment to ${d.personName}'),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '${CurrencyUtil.format(d.remainingAmount, _currency)} left of ${CurrencyUtil.format(d.amount, _currency)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _amountCtrl,
+                autofocus: true,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))],
+                decoration: InputDecoration(
+                  labelText: 'Amount',
+                  prefixText: '${CurrencyUtil.symbol(_currency)} ',
+                  errorText: _error,
+                ),
+                onChanged: (_) {
+                  if (_error != null) setState(() => _error = null);
+                },
+              ),
+              const SizedBox(height: 12),
+              if (d.affectsAccount) ...[
+                DropdownButtonFormField<String>(
+                  initialValue: _accountId,
+                  isExpanded: true,
+                  items: widget.accounts
+                      .map((a) => DropdownMenuItem(
+                            value: a.id,
+                            child: Row(
+                              children: [
+                                AccountIcon(account: a, size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(child: Text(a.name, overflow: TextOverflow.ellipsis)),
+                              ],
+                            ),
+                          ))
+                      .toList(),
+                  onChanged: (v) => setState(() => _accountId = v),
+                  decoration: InputDecoration(labelText: isLent ? 'Received into' : 'Paid from'),
+                  dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+                ),
+                const SizedBox(height: 12),
+              ],
+              InkWell(
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _date,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2100),
+                  );
+                  if (picked != null) {
+                    setState(() => _date = DateTime(
+                        picked.year, picked.month, picked.day, _date.hour, _date.minute));
+                  }
+                },
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Date',
+                    suffixIcon: Icon(Icons.calendar_today_rounded),
+                  ),
+                  child: Text(DateUtil.formatDate(_date)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _noteCtrl,
+                decoration: const InputDecoration(labelText: 'Note (optional)'),
+              ),
+              if (!d.affectsAccount) ...[
+                const SizedBox(height: 10),
+                Text(
+                  'This record does not affect account balances, so no transaction is created.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: _saving ? null : _save,
+          child: _saving
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Save Payment'),
+        ),
+      ],
     );
   }
 }
