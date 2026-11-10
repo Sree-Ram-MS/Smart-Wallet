@@ -10,6 +10,7 @@ import '../../providers/providers.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/category_icon.dart';
 import '../../widgets/account_icon.dart';
+import '../../widgets/quick_category_dialog.dart';
 import '../../core/layout/responsive.dart';
 
 /// Debts screen — "I Lent" (direction = 'lent')
@@ -737,11 +738,13 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
     final isLent = widget.direction == 'lent';
     final selectedAcc = widget.accounts.firstWhereOrNull((a) => a.id == _accountId);
     final catType = isLent ? 'expense' : 'income';
-    final parentCategories = widget.categories
+    // Read live so a category created with "New category" shows up at once.
+    final allCategories = widget.ref.read(categoriesProvider);
+    final parentCategories = allCategories
         .where((c) => (c.type == catType || catType.isEmpty) && (c.parentId == null || c.parentId!.isEmpty))
         .toList();
     final subcategories = _selectedParentCategoryId != null
-        ? widget.categories.where((c) => c.parentId == _selectedParentCategoryId).toList()
+        ? allCategories.where((c) => c.parentId == _selectedParentCategoryId).toList()
         : <Category>[];
 
     return Padding(
@@ -914,6 +917,31 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
                       ),
                       const SizedBox(height: 12),
                     ],
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: NewCategoryChip(
+                          onPressed: () async {
+                            final cat = await showQuickCategoryDialog(
+                              context: context,
+                              ref: widget.ref,
+                              type: catType,
+                            );
+                            if (cat == null || !mounted) return;
+                            setState(() {
+                              if (cat.parentId != null && cat.parentId!.isNotEmpty) {
+                                _selectedParentCategoryId = cat.parentId;
+                                _selectedSubcategoryId = cat.id;
+                              } else {
+                                _selectedParentCategoryId = cat.id;
+                                _selectedSubcategoryId = null;
+                              }
+                            });
+                          },
+                        ),
+                      ),
+                    ),
                     // Start date
                     InkWell(
                       onTap: () async {

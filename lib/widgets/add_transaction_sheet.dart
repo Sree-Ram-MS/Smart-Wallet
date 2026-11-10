@@ -8,6 +8,7 @@ import '../../providers/providers.dart';
 import '../../core/utils/utils.dart';
 import 'category_icon.dart';
 import 'account_icon.dart';
+import 'quick_category_dialog.dart';
 import '../core/layout/responsive.dart';
 
 const _uuid = Uuid();
@@ -178,6 +179,22 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
         entry.amountCtrl.text = perPerson % 1 == 0 ? perPerson.toInt().toString() : perPerson.toStringAsFixed(2);
       }
     }
+  }
+
+  /// Creates a category of the form's current type and selects it.
+  Future<void> _createCategory() async {
+    final type = _type == 'income' ? 'income' : 'expense';
+    final cat = await showQuickCategoryDialog(context: context, ref: widget.ref, type: type);
+    if (cat == null || !mounted) return;
+    setState(() {
+      if (cat.parentId != null && cat.parentId!.isNotEmpty) {
+        _selectedParentCategoryId = cat.parentId;
+        _selectedSubcategoryId = cat.id;
+      } else {
+        _selectedParentCategoryId = cat.id;
+        _selectedSubcategoryId = null;
+      }
+    });
   }
 
   Widget _buildTypeTab(String type, String label, Color activeColor) {
@@ -727,6 +744,13 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                         ),
                         const SizedBox(height: 12),
                       ],
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: NewCategoryChip(onPressed: _createCategory),
+                        ),
+                      ),
                     ],
 
                     // Split Bill with Friends Section (Expense only)
