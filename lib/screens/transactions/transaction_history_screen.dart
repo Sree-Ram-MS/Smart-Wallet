@@ -9,6 +9,7 @@ import '../../providers/providers.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/add_transaction_sheet.dart';
 import '../../widgets/category_icon.dart';
+import '../../widgets/debt_link_badge.dart';
 import '../../core/layout/responsive.dart';
 
 class TransactionHistoryScreen extends ConsumerStatefulWidget {
@@ -127,6 +128,7 @@ class _TransactionHistoryScreenState extends ConsumerState<TransactionHistoryScr
     final currency = user?.baseCurrency ?? 'INR';
 
     final filtered = _filter(all, accounts, categories);
+    final debtLinks = ref.watch(debtLinkedTxnProvider);
     final totalSum = filtered.fold<double>(0.0, (s, t) => s + (t.type == 'expense' ? -t.amount : t.amount));
 
     return PopScope(
@@ -342,6 +344,7 @@ class _TransactionHistoryScreenState extends ConsumerState<TransactionHistoryScr
                           txn: filtered[i],
                           accounts: accounts,
                           categories: categories,
+                          linkedDebt: debtLinks[filtered[i].id],
                           ref: ref,
                           delay: i < 15 ? i * 25 : 0,
                         ),
@@ -917,12 +920,14 @@ class _TxnListTile extends StatelessWidget {
   final Transaction txn;
   final List<Account> accounts;
   final List<Category> categories;
+  final DebtCredit? linkedDebt;
   final WidgetRef ref;
   final int delay;
   const _TxnListTile({
     required this.txn,
     required this.accounts,
     required this.categories,
+    this.linkedDebt,
     required this.ref,
     required this.delay,
   });
@@ -1313,9 +1318,13 @@ class _TxnListTile extends StatelessWidget {
                 ),
               ),
             ],
+            if (linkedDebt != null) ...[
+              const SizedBox(height: 2),
+              DebtLinkBadge(debt: linkedDebt!),
+            ],
           ],
         ),
-        isThreeLine: txn.note.isNotEmpty || txn.isSplit,
+        isThreeLine: txn.note.isNotEmpty || txn.isSplit || linkedDebt != null,
       ),
     ).animate().fadeIn(delay: Duration(milliseconds: delay), duration: 300.ms);
   }

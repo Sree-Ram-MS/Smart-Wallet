@@ -542,6 +542,19 @@ final recentTransactionsProvider = Provider<List<Transaction>>((ref) {
   return txns.where((t) => enabledIds.contains(t.accountId)).take(5).toList();
 });
 
+/// Maps a transaction id to the Lent/Borrowed record it was created for
+/// (the original entry, its settlement, and any partial repayments).
+final debtLinkedTxnProvider = Provider<Map<String, DebtCredit>>((ref) {
+  final debts = ref.watch(debtCreditProvider);
+  final map = <String, DebtCredit>{};
+  for (final dc in debts) {
+    for (final id in [dc.transactionId, dc.settlementTransactionId]) {
+      if (id != null && id.isNotEmpty) map[id] = dc;
+    }
+  }
+  return map;
+});
+
 /// Active upcoming planned payments (not completed, sorted by due date, up to 5 for dashboard or list)
 final upcomingPaymentsProvider = Provider<List<PlannedPayment>>((ref) {
   final planned = ref.watch(plannedPaymentsProvider);

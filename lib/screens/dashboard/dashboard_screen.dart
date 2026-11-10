@@ -15,6 +15,7 @@ import '../../widgets/category_icon.dart';
 import '../../widgets/account_icon.dart';
 import '../../widgets/user_avatar.dart';
 import '../../widgets/card_network_badge.dart';
+import '../../widgets/debt_link_badge.dart';
 import 'dashboard_cards_view.dart';
 import '../../core/layout/responsive.dart';
 
@@ -59,8 +60,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     for (final t in recent) {
       recentActivities.add(_RecentActivityItem(transaction: t, date: t.date));
     }
+    // A Lent/Borrowed record that moved money already has its own transaction
+    // (shown above with a Lent/Borrowed badge), so only list records that have
+    // no transaction (affectsAccount == false) to avoid showing them twice.
+    final txnIds = transactions.map((t) => t.id).toSet();
     for (final dc in debtCredits) {
-      if (enabledIds.contains(dc.accountId)) {
+      final hasTxn = dc.transactionId != null && txnIds.contains(dc.transactionId);
+      if (!hasTxn && enabledIds.contains(dc.accountId)) {
         recentActivities.add(_RecentActivityItem(debtCredit: dc, date: dc.startDate));
       }
     }
@@ -1453,6 +1459,7 @@ class _TransactionTile extends ConsumerWidget {
             : AppColors.transfer;
 
     final sign = txn.type == 'income' ? '+' : txn.type == 'expense' ? '-' : '↔';
+    final linkedDebt = ref.watch(debtLinkedTxnProvider)[txn.id];
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -1513,6 +1520,10 @@ class _TransactionTile extends ConsumerWidget {
                   ],
                 ),
               ),
+            ],
+            if (linkedDebt != null) ...[
+              const SizedBox(height: 2),
+              DebtLinkBadge(debt: linkedDebt),
             ],
           ],
         ),
