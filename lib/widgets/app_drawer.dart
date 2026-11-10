@@ -23,6 +23,7 @@ const appNavDestinations = <AppNavDestination>[
   AppNavDestination(Icons.receipt_long_rounded, 'Transaction History', '/transactions'),
   AppNavDestination(Icons.arrow_upward_rounded, 'Debts (I Lent)', '/debts'),
   AppNavDestination(Icons.arrow_downward_rounded, 'Credits (I Borrowed)', '/credits'),
+  AppNavDestination(Icons.savings_rounded, 'Savings Goals', '/goals'),
   AppNavDestination(Icons.call_split_rounded, 'Split Bills / Expenses', '/split-bills'),
   AppNavDestination(Icons.calendar_month_rounded, 'Planned Payments', '/planned'),
   AppNavDestination(Icons.tune_rounded, 'Config / Categories', '/config'),

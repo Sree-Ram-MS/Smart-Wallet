@@ -120,7 +120,8 @@ class CloudSyncService {
       HiveService.transactionsBox.isNotEmpty ||
       HiveService.accountsBox.isNotEmpty ||
       HiveService.plannedBox.isNotEmpty ||
-      HiveService.debtCreditBox.isNotEmpty;
+      HiveService.debtCreditBox.isNotEmpty ||
+      HiveService.goalsBox.isNotEmpty;
 
   void _set(CloudSyncStatus status, {String? message}) {
     state.value = CloudSyncState(status,
@@ -147,6 +148,7 @@ class CloudSyncService {
         HiveService.plannedBox.watch().listen(onChange),
         HiveService.debtCreditBox.watch().listen(onChange),
         HiveService.templatesBox.watch().listen(onChange),
+        HiveService.goalsBox.watch().listen(onChange),
         HiveService.settingsBox.watch().listen((e) {
           if (_syncedSettingsKeys.contains(e.key)) _onLocalChange();
         }),

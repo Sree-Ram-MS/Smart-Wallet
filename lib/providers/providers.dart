@@ -479,6 +479,50 @@ final debtCreditProvider = StateNotifierProvider<DebtCreditNotifier, List<DebtCr
   (ref) => DebtCreditNotifier(ref),
 );
 
+// ─── Goals Provider ──────────────────────────────────────────────────────────
+
+class GoalsNotifier extends StateNotifier<List<Goal>> {
+  GoalsNotifier() : super(HiveService.getGoals());
+
+  Future<void> add(Goal g) async {
+    await HiveService.addGoal(g);
+    state = HiveService.getGoals();
+  }
+
+  Future<void> update(Goal g) async {
+    await HiveService.updateGoal(g);
+    state = HiveService.getGoals();
+  }
+
+  Future<void> delete(Goal g) async {
+    await HiveService.deleteGoal(g);
+    state = HiveService.getGoals();
+  }
+
+  Future<void> addContribution(Goal g, {required double amount, required DateTime date, String note = ''}) async {
+    await HiveService.addGoalContribution(g, amount: amount, date: date, note: note);
+    state = HiveService.getGoals();
+  }
+
+  Future<void> removeContribution(Goal g, String contributionId) async {
+    await HiveService.removeGoalContribution(g, contributionId);
+    state = HiveService.getGoals();
+  }
+
+  Future<void> setCompleted(Goal g, bool completed) async {
+    g.isCompleted = completed;
+    g.completedAt = completed ? DateTime.now() : null;
+    await HiveService.updateGoal(g);
+    state = HiveService.getGoals();
+  }
+
+  void refresh() {
+    state = HiveService.getGoals();
+  }
+}
+
+final goalsProvider = StateNotifierProvider<GoalsNotifier, List<Goal>>((ref) => GoalsNotifier());
+
 // ─── Templates Provider ──────────────────────────────────────────────────────
 
 class TemplatesNotifier extends StateNotifier<List<Template>> {
@@ -654,6 +698,7 @@ void refreshAllData(WidgetRef ref) {
   ref.read(plannedPaymentsProvider.notifier).refresh();
   ref.read(debtCreditProvider.notifier).refresh();
   ref.read(templatesProvider.notifier).refresh();
+  ref.read(goalsProvider.notifier).refresh();
   ref.read(analyticsCardOrderProvider.notifier).refresh();
 }
 

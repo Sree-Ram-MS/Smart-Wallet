@@ -306,3 +306,63 @@ class SplitMemberAdapter extends TypeAdapter<SplitMember> {
   }
 }
 
+
+// ─── Goal Adapter ────────────────────────────────────────────────────────────
+class GoalAdapter extends TypeAdapter<Goal> {
+  @override final int typeId = 9;
+  @override Goal read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read()};
+    return Goal(
+      id: fields[0] as String,
+      name: fields[1] as String? ?? '',
+      emoji: fields[2] as String? ?? '🎯',
+      colorValue: fields[3] as int? ?? 0xFF6C63FF,
+      targetAmount: (fields[4] as num?)?.toDouble() ?? 0.0,
+      deadline: fields[5] as DateTime?,
+      linkedAccountId: fields[6] as String?,
+      createdAt: fields[7] as DateTime? ?? DateTime.now(),
+      isCompleted: fields[8] as bool? ?? false,
+      notes: fields[9] as String? ?? '',
+      contributions: (fields[10] as List?)?.cast<GoalContribution>(),
+      completedAt: fields[11] as DateTime?,
+    );
+  }
+  @override void write(BinaryWriter writer, Goal obj) {
+    writer.writeByte(12);
+    writer.writeByte(0); writer.write(obj.id);
+    writer.writeByte(1); writer.write(obj.name);
+    writer.writeByte(2); writer.write(obj.emoji);
+    writer.writeByte(3); writer.write(obj.colorValue);
+    writer.writeByte(4); writer.write(obj.targetAmount);
+    writer.writeByte(5); writer.write(obj.deadline);
+    writer.writeByte(6); writer.write(obj.linkedAccountId);
+    writer.writeByte(7); writer.write(obj.createdAt);
+    writer.writeByte(8); writer.write(obj.isCompleted);
+    writer.writeByte(9); writer.write(obj.notes);
+    writer.writeByte(10); writer.write(obj.contributions);
+    writer.writeByte(11); writer.write(obj.completedAt);
+  }
+}
+
+// ─── GoalContribution Adapter ────────────────────────────────────────────────
+class GoalContributionAdapter extends TypeAdapter<GoalContribution> {
+  @override final int typeId = 10;
+  @override GoalContribution read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read()};
+    return GoalContribution(
+      id: fields[0] as String,
+      amount: (fields[1] as num).toDouble(),
+      date: fields[2] as DateTime,
+      note: fields[3] as String? ?? '',
+    );
+  }
+  @override void write(BinaryWriter writer, GoalContribution obj) {
+    writer.writeByte(4);
+    writer.writeByte(0); writer.write(obj.id);
+    writer.writeByte(1); writer.write(obj.amount);
+    writer.writeByte(2); writer.write(obj.date);
+    writer.writeByte(3); writer.write(obj.note);
+  }
+}

@@ -15,6 +15,7 @@ class BackupPreviewInfo {
   final int plannedCount;
   final int debtsCount;
   final int templatesCount;
+  final int goalsCount;
   final String userName;
   final String currency;
   final Map<String, dynamic> rawData;
@@ -28,6 +29,7 @@ class BackupPreviewInfo {
     required this.plannedCount,
     required this.debtsCount,
     required this.templatesCount,
+    this.goalsCount = 0,
     required this.userName,
     required this.currency,
     required this.rawData,
@@ -50,6 +52,7 @@ class BackupService {
     final planned = HiveService.getPlanned();
     final debts = HiveService.getDebtCredits();
     final templates = HiveService.templatesBox.values.toList();
+    final goals = HiveService.getGoals();
     final cardOrder = HiveService.getAnalyticsCardOrder();
 
     return {
@@ -188,6 +191,29 @@ class BackupService {
                 'note': tp.note,
               })
           .toList(),
+      'goals': goals
+          .map((g) => {
+                'id': g.id,
+                'name': g.name,
+                'emoji': g.emoji,
+                'colorValue': g.colorValue,
+                'targetAmount': g.targetAmount,
+                'deadline': g.deadline?.toIso8601String(),
+                'linkedAccountId': g.linkedAccountId,
+                'createdAt': g.createdAt.toIso8601String(),
+                'isCompleted': g.isCompleted,
+                'completedAt': g.completedAt?.toIso8601String(),
+                'notes': g.notes,
+                'contributions': g.contributions
+                    ?.map((c) => {
+                          'id': c.id,
+                          'amount': c.amount,
+                          'date': c.date.toIso8601String(),
+                          'note': c.note,
+                        })
+                    .toList(),
+              })
+          .toList(),
       'analyticsCardOrder': cardOrder,
     };
   }
@@ -308,6 +334,7 @@ class BackupService {
       plannedCount: planned.length,
       debtsCount: debts.length,
       templatesCount: templates.length,
+      goalsCount: (data['goals'] as List? ?? []).length,
       userName: userMap?['name']?.toString() ?? 'User',
       currency: userMap?['baseCurrency']?.toString() ?? 'INR',
       rawData: data,
@@ -323,6 +350,9 @@ class BackupService {
       await HiveService.plannedBox.clear();
       await HiveService.debtCreditBox.clear();
       await HiveService.templatesBox.clear();
+      // Backups made before goals existed (or by an older app version) have
+      // no 'goals' key: keep the goals on this device instead of wiping them.
+      if (data.containsKey('goals')) await HiveService.goalsBox.clear();
     }
 
     // 1. User Profile
@@ -534,7 +564,44 @@ class BackupService {
       }
     }
 
-    // 8. Analytics Card Order
+    // 8. Savings goals (absent in backups made before goals existed)
+    final goalList = data['goals'] as List? ?? [];
+    for (final raw in goalList) {
+      final g = raw as Map<String, dynamic>;
+      final contributions = (g['contributions'] as List?)
+          ?.map((raw) {
+            final c = raw as Map<String, dynamic>;
+            return GoalContribution(
+              id: c['id'] ?? '',
+              amount: (c['amount'] as num?)?.toDouble() ?? 0.0,
+              date: DateTime.tryParse(c['date']?.toString() ?? '') ?? DateTime.now(),
+              note: c['note'] ?? '',
+            );
+          })
+          .toList();
+      final goal = Goal(
+        id: g['id'] ?? '',
+        name: g['name'] ?? '',
+        emoji: g['emoji'] ?? '🎯',
+        colorValue: g['colorValue'] ?? 0xFF6C63FF,
+        targetAmount: (g['targetAmount'] as num?)?.toDouble() ?? 0.0,
+        deadline: g['deadline'] != null ? DateTime.tryParse(g['deadline']) : null,
+        linkedAccountId: g['linkedAccountId'],
+        createdAt: DateTime.tryParse(g['createdAt']?.toString() ?? '') ?? DateTime.now(),
+        isCompleted: g['isCompleted'] ?? false,
+        completedAt: g['completedAt'] != null ? DateTime.tryParse(g['completedAt']) : null,
+        notes: g['notes'] ?? '',
+        contributions: (contributions == null || contributions.isEmpty) ? null : contributions,
+      );
+      if (!replaceAll) {
+        final exists = HiveService.goalsBox.values.any((x) => x.id == goal.id);
+        if (!exists) await HiveService.goalsBox.add(goal);
+      } else {
+        await HiveService.goalsBox.add(goal);
+      }
+    }
+
+    // 9. Analytics Card Order
     final cardOrder = data['analyticsCardOrder'] as List?;
     if (cardOrder != null) {
       await HiveService.saveAnalyticsCardOrder(List<String>.from(cardOrder));

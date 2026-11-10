@@ -8,6 +8,7 @@ import '../../screens/account/manage_accounts_screen.dart';
 import '../../screens/transactions/transaction_history_screen.dart';
 import '../../screens/planned_payments/planned_payments_screen.dart';
 import '../../screens/debts/debts_screen.dart';
+import '../../screens/goals/goals_screen.dart';
 import '../../screens/config/config_screen.dart';
 import '../../screens/templates/templates_screen.dart';
 import '../../screens/import_export/import_export_screen.dart';
@@ -36,6 +37,7 @@ final appRouter = GoRouter(
     GoRoute(path: '/split-bills', builder: (ctx, s) => const SplitBillsScreen()),
     GoRoute(path: '/debts', builder: (ctx, s) => const DebtsScreen()),
     GoRoute(path: '/credits', builder: (ctx, s) => const CreditsScreen()),
+    GoRoute(path: '/goals', builder: (ctx, s) => const GoalsScreen()),
     GoRoute(path: '/config', builder: (ctx, s) => const ConfigScreen()),
     GoRoute(path: '/templates', builder: (ctx, s) => const TemplatesScreen()),
     GoRoute(path: '/import-export', builder: (ctx, s) => const ImportExportScreen()),

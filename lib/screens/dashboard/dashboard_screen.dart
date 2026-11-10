@@ -17,6 +17,7 @@ import '../../widgets/user_avatar.dart';
 import '../../widgets/card_network_badge.dart';
 import '../../widgets/debt_link_badge.dart';
 import 'dashboard_cards_view.dart';
+import '../goals/goals_screen.dart';
 import '../../core/layout/responsive.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -146,6 +147,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       currency: currency,
       ref: ref,
     );
+
+    // Savings goals: the two active goals closest to their deadline
+    final goals = ref.watch(goalsProvider);
+    final activeGoals = goals.where((g) => !g.isCompleted).toList()
+      ..sort((a, b) {
+        if (a.deadline == null && b.deadline == null) return a.createdAt.compareTo(b.createdAt);
+        if (a.deadline == null) return 1;
+        if (b.deadline == null) return -1;
+        return a.deadline!.compareTo(b.deadline!);
+      });
+    final List<Widget> goalsSection = [
+      _SectionHeader(title: 'Goals', onSeeAll: () => context.go('/goals')),
+      const SizedBox(height: 12),
+      if (activeGoals.isEmpty)
+        _GoalsEmptyCard(onTap: () => context.go('/goals'))
+      else
+        ...activeGoals.take(2).map((g) => _DashboardGoalTile(
+              progress: goalProgressOf(g, accounts),
+              currency: currency,
+            )),
+    ];
 
     // Exact Order #3: Upcoming Payments
     final List<Widget> upcomingSection = [
@@ -290,6 +312,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 recentActivities: recentSection,
                 splitBills: splitSection,
                 upcoming: upcomingSection,
+                goals: goalsSection,
               )
             else
               CustomScrollView(
@@ -312,6 +335,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         const SizedBox(height: 24),
                         // 5. Upcoming Payments
                         ...upcomingSection,
+                        const SizedBox(height: 24),
+                        // 6. Savings Goals
+                        ...goalsSection,
                       ]),
                     ),
                   ),
@@ -1895,6 +1921,7 @@ class _WideOverview extends StatelessWidget {
   final List<Widget> recentActivities;
   final Widget splitBills;
   final List<Widget> upcoming;
+  final List<Widget> goals;
 
   const _WideOverview({
     required this.netWalletCard,
@@ -1902,6 +1929,7 @@ class _WideOverview extends StatelessWidget {
     required this.recentActivities,
     required this.splitBills,
     required this.upcoming,
+    required this.goals,
   });
 
   @override
@@ -1944,6 +1972,8 @@ class _WideOverview extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    ...goals,
+                    const SizedBox(height: 24),
                     ...upcoming,
                     const SizedBox(height: 24),
                     splitBills,
@@ -1953,6 +1983,106 @@ class _WideOverview extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Savings goals (dashboard) ───────────────────────────────────────────────
+
+class _DashboardGoalTile extends StatelessWidget {
+  final GoalProgress progress;
+  final String currency;
+  const _DashboardGoalTile({required this.progress, required this.currency});
+
+  @override
+  Widget build(BuildContext context) {
+    final g = progress.goal;
+    final color = Color(g.colorValue);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final muted = isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => context.go('/goals'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              GoalRing(fraction: progress.fraction, color: color, emoji: g.emoji, size: 46),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      g.name,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${CurrencyUtil.format(progress.saved, currency)} of ${CurrencyUtil.format(progress.target, currency)}',
+                      style: TextStyle(fontSize: 12, color: muted),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      progress.paceText(currency),
+                      style: TextStyle(fontSize: 10.5, color: muted),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${progress.percent}%',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: color),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GoalsEmptyCard extends StatelessWidget {
+  final VoidCallback onTap;
+  const _GoalsEmptyCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+        decoration: BoxDecoration(
+          color: AppColors.darkCard.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.savings_outlined, size: 32, color: AppColors.darkTextMuted),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('No savings goals yet', style: Theme.of(context).textTheme.bodyMedium),
+                  const SizedBox(height: 2),
+                  Text('Set a target and track your progress', style: Theme.of(context).textTheme.bodySmall),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.darkTextMuted),
+          ],
+        ),
       ),
     );
   }

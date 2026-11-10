@@ -330,3 +330,56 @@ class SplitMember extends HiveObject {
   }
 }
 
+
+// ─── Goal (savings goal) ─────────────────────────────────────────────────────
+
+@HiveType(typeId: 9)
+class Goal extends HiveObject {
+  @HiveField(0) String id;
+  @HiveField(1) String name;
+  @HiveField(2) String emoji;
+  @HiveField(3) int colorValue;
+  @HiveField(4) double targetAmount;
+  @HiveField(5) DateTime? deadline;
+  @HiveField(6) String? linkedAccountId; // progress = this account's balance
+  @HiveField(7) DateTime createdAt;
+  @HiveField(8) bool isCompleted;
+  @HiveField(9) String notes;
+  @HiveField(10) List<GoalContribution>? contributions; // allocations only, no balance change
+  @HiveField(11) DateTime? completedAt;
+
+  Goal({
+    required this.id,
+    required this.name,
+    this.emoji = '🎯',
+    this.colorValue = 0xFF6C63FF,
+    required this.targetAmount,
+    this.deadline,
+    this.linkedAccountId,
+    required this.createdAt,
+    this.isCompleted = false,
+    this.notes = '',
+    this.contributions,
+    this.completedAt,
+  });
+
+  double get contributedAmount =>
+      (contributions ?? const <GoalContribution>[]).fold(0.0, (s, c) => s + c.amount);
+}
+
+// ─── GoalContribution ────────────────────────────────────────────────────────
+
+@HiveType(typeId: 10)
+class GoalContribution {
+  @HiveField(0) String id;
+  @HiveField(1) double amount;
+  @HiveField(2) DateTime date;
+  @HiveField(3) String note;
+
+  GoalContribution({
+    required this.id,
+    required this.amount,
+    required this.date,
+    this.note = '',
+  });
+}

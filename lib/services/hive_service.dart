@@ -13,6 +13,7 @@ class HiveService {
   static const String _debtCreditBox = 'debt_credits';
   static const String _templatesBox = 'templates';
   static const String _settingsBox = 'settings';
+  static const String _goalsBox = 'goals';
 
   static Future<void> init() async {
     await Hive.initFlutter();
@@ -25,6 +26,8 @@ class HiveService {
     Hive.registerAdapter(TemplateAdapter());
     Hive.registerAdapter(SplitMemberAdapter());
     Hive.registerAdapter(DebtPaymentAdapter());
+    Hive.registerAdapter(GoalAdapter());
+    Hive.registerAdapter(GoalContributionAdapter());
 
     await Hive.openBox<UserProfile>(_userBox);
     await Hive.openBox<Account>(_accountsBox);
@@ -34,6 +37,7 @@ class HiveService {
     await Hive.openBox<DebtCredit>(_debtCreditBox);
     await Hive.openBox<Template>(_templatesBox);
     await Hive.openBox(_settingsBox);
+    await Hive.openBox<Goal>(_goalsBox);
 
     _seedDefaultCategories();
   }
@@ -47,6 +51,7 @@ class HiveService {
   static Box<DebtCredit> get debtCreditBox => Hive.box<DebtCredit>(_debtCreditBox);
   static Box<Template> get templatesBox => Hive.box<Template>(_templatesBox);
   static Box get settingsBox => Hive.box(_settingsBox);
+  static Box<Goal> get goalsBox => Hive.box<Goal>(_goalsBox);
 
   // Analytics Cards Ordering
   static const List<String> defaultAnalyticsCardOrder = [
@@ -578,6 +583,33 @@ class HiveService {
 
   static Future<void> updateTemplate(Template t) => t.save();
   static Future<void> deleteTemplate(Template t) => t.delete();
+
+  // Savings goals
+  static List<Goal> getGoals() => goalsBox.values.toList();
+
+  static Future<void> addGoal(Goal g) async {
+    g.id = _uuid.v4();
+    await goalsBox.add(g);
+  }
+
+  static Future<void> updateGoal(Goal g) => g.save();
+  static Future<void> deleteGoal(Goal g) => g.delete();
+
+  /// Sets money aside for a goal. Contributions are allocations only and do
+  /// not change any account balance.
+  static Future<void> addGoalContribution(Goal g, {required double amount, required DateTime date, String note = ''}) async {
+    g.contributions = [
+      ...?g.contributions,
+      GoalContribution(id: _uuid.v4(), amount: amount, date: date, note: note),
+    ];
+    await g.save();
+  }
+
+  static Future<void> removeGoalContribution(Goal g, String contributionId) async {
+    final list = (g.contributions ?? const <GoalContribution>[]).where((c) => c.id != contributionId).toList();
+    g.contributions = list.isEmpty ? null : list;
+    await g.save();
+  }
 
   // Seed default categories
   static void _seedDefaultCategories() {
