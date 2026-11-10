@@ -42,10 +42,10 @@ class GoalProgress {
     if (days < 0) return 'Deadline passed · ${CurrencyUtil.format(remaining, currency)} to go';
     if (days < 56) {
       final weeks = math.max(1, (days / 7).ceil());
-      return 'Save ${CurrencyUtil.format(remaining / weeks, currency)}/week to reach by ${DateUtil.formatDate(deadline)}';
+      return 'Save ${CurrencyUtil.format((remaining / weeks).ceilToDouble(), currency)}/week to reach by ${DateUtil.formatDate(deadline)}';
     }
     final months = math.max(1, (days / 30.44).ceil());
-    return 'Save ${CurrencyUtil.format(remaining / months, currency)}/month to reach by ${DateUtil.formatDate(deadline)}';
+    return 'Save ${CurrencyUtil.format((remaining / months).ceilToDouble(), currency)}/month to reach by ${DateUtil.formatDate(deadline)}';
   }
 
   /// null when there is no deadline; otherwise whether savings keep up with
@@ -279,12 +279,7 @@ class GoalCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    GoalRing(fraction: progress.fraction, color: color, emoji: g.emoji),
-                  ],
-                ),
+                GoalRing(fraction: progress.fraction, color: color, emoji: g.emoji),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(

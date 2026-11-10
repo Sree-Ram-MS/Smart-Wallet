@@ -344,14 +344,12 @@ class _DebtList extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-          child: ContentWidth(
-            child: _OutstandingSummary(
-              label: isLentList ? 'Still to collect' : 'Still to repay',
-              amount: outstanding,
-              count: items.length,
-              currency: currency,
-              color: isLentList ? AppColors.income : AppColors.expense,
-            ),
+          child: _OutstandingSummary(
+            label: isLentList ? 'Still to collect' : 'Still to repay',
+            amount: outstanding,
+            count: items.length,
+            currency: currency,
+            color: isLentList ? AppColors.income : AppColors.expense,
           ),
         ),
         Expanded(child: list),
