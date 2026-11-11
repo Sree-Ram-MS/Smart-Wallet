@@ -10,6 +10,7 @@ import '../../models/models.dart';
 import '../../providers/providers.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/category_icon.dart';
+import '../../widgets/category_search_field.dart';
 import '../../widgets/account_icon.dart';
 import '../../core/layout/responsive.dart';
 
@@ -499,12 +500,6 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final parentCategories = widget.categories
-        .where((c) => c.type == 'expense' && (c.parentId == null || c.parentId!.isEmpty))
-        .toList();
-    final subcategories = _selectedParentCategoryId != null
-        ? widget.categories.where((c) => c.parentId == _selectedParentCategoryId).toList()
-        : <Category>[];
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final selectedAcc = widget.accounts.firstWhereOrNull((a) => a.id == _accountId);
@@ -576,107 +571,18 @@ class _PlannedPaymentSheetState extends State<_PlannedPaymentSheet> {
                       decoration: const InputDecoration(labelText: 'Account'),
                       dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
                     ),
-                    // Category & Subcategory Row
-                    if (_selectedParentCategoryId != null && subcategories.isNotEmpty) ...[
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<String?>(
-                              key: ValueKey('planned_parent_$_selectedParentCategoryId'),
-                              initialValue: _selectedParentCategoryId,
-                              isExpanded: true,
-                              items: [
-                                const DropdownMenuItem(value: null, child: Text('None', overflow: TextOverflow.ellipsis)),
-                                ...parentCategories.map((c) => DropdownMenuItem(
-                                      value: c.id,
-                                      child: Row(
-                                        children: [
-                                          CategoryIcon(category: c, size: 16),
-                                          const SizedBox(width: 6),
-                                          Expanded(
-                                            child: Text(c.name,
-                                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                                                overflow: TextOverflow.ellipsis),
-                                          ),
-                                        ],
-                                      ),
-                                    )),
-                              ],
-                              onChanged: (v) => setState(() {
-                                _selectedParentCategoryId = v;
-                                _selectedSubcategoryId = null;
-                              }),
-                              decoration: const InputDecoration(labelText: 'Category'),
-                              dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: DropdownButtonFormField<String?>(
-                              key: ValueKey('planned_sub_$_selectedSubcategoryId'),
-                              initialValue: _selectedSubcategoryId,
-                              isExpanded: true,
-                              items: [
-                                DropdownMenuItem(
-                                  value: null,
-                                  child: Text(
-                                    'All / General',
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
-                                ...subcategories.map((sub) => DropdownMenuItem(
-                                      value: sub.id,
-                                      child: Row(
-                                        children: [
-                                          CategoryIcon(category: sub, size: 16),
-                                          const SizedBox(width: 6),
-                                          Expanded(
-                                            child: Text(sub.name, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
-                                          ),
-                                        ],
-                                      ),
-                                    )),
-                              ],
-                              onChanged: (v) => setState(() => _selectedSubcategoryId = v),
-                              decoration: const InputDecoration(labelText: 'Subcategory'),
-                              dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                    ] else ...[
-                      DropdownButtonFormField<String?>(
-                        key: ValueKey('planned_parent_$_selectedParentCategoryId'),
-                        initialValue: _selectedParentCategoryId,
-                        isExpanded: true,
-                        items: [
-                          const DropdownMenuItem(value: null, child: Text('No Category', overflow: TextOverflow.ellipsis)),
-                          ...parentCategories.map((c) => DropdownMenuItem(
-                                value: c.id,
-                                child: Row(
-                                  children: [
-                                    CategoryIcon(category: c, size: 18),
-                                    const SizedBox(width: 8),
-                                    Expanded(child: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
-                                  ],
-                                ),
-                              )),
-                        ],
-                        onChanged: (v) => setState(() {
-                          _selectedParentCategoryId = v;
-                          _selectedSubcategoryId = null;
-                        }),
-                        decoration: const InputDecoration(labelText: 'Category'),
-                        dropdownColor: isDark ? AppColors.darkCard : AppColors.lightCard,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
+                    const SizedBox(height: 12),
+                    // Category & Subcategory: searchable, with create/edit inline
+                    CategoryPickerPair(
+                      type: 'expense',
+                      categoryId: _selectedParentCategoryId,
+                      subcategoryId: _selectedSubcategoryId,
+                      onChanged: (cat, sub) => setState(() {
+                        _selectedParentCategoryId = cat;
+                        _selectedSubcategoryId = sub;
+                      }),
+                    ),
+                    const SizedBox(height: 12),
                     // Due date
                     InkWell(
                       onTap: () async {

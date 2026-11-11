@@ -8,7 +8,7 @@ import '../../providers/providers.dart';
 import '../../core/utils/utils.dart';
 import 'category_icon.dart';
 import 'account_icon.dart';
-import 'quick_category_dialog.dart';
+import 'category_search_field.dart';
 import '../core/layout/responsive.dart';
 
 const _uuid = Uuid();
@@ -179,22 +179,6 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
         entry.amountCtrl.text = perPerson % 1 == 0 ? perPerson.toInt().toString() : perPerson.toStringAsFixed(2);
       }
     }
-  }
-
-  /// Creates a category of the form's current type and selects it.
-  Future<void> _createCategory() async {
-    final type = _type == 'income' ? 'income' : 'expense';
-    final cat = await showQuickCategoryDialog(context: context, ref: widget.ref, type: type);
-    if (cat == null || !mounted) return;
-    setState(() {
-      if (cat.parentId != null && cat.parentId!.isNotEmpty) {
-        _selectedParentCategoryId = cat.parentId;
-        _selectedSubcategoryId = cat.id;
-      } else {
-        _selectedParentCategoryId = cat.id;
-        _selectedSubcategoryId = null;
-      }
-    });
   }
 
   Widget _buildTypeTab(String type, String label, Color activeColor) {
@@ -652,105 +636,18 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                       const SizedBox(height: 12),
                     ],
 
-                    // Category & Subcategory (Row when subcategories exist)
+                    // Category & Subcategory: searchable, with create/edit inline
                     if (_type != 'transfer') ...[
-                      if (_selectedParentCategoryId != null && subcategories.isNotEmpty) ...[
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: _DropdownField<String?>(
-                                label: 'Category',
-                                value: _selectedParentCategoryId,
-                                items: [
-                                  const DropdownMenuItem(value: null, child: Text('None')),
-                                  ...parentCategories.map((c) => DropdownMenuItem(
-                                        value: c.id,
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            CategoryIcon(category: c, size: 16),
-                                            const SizedBox(width: 6),
-                                            Flexible(
-                                              child: Text(c.name,
-                                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                                                  overflow: TextOverflow.ellipsis),
-                                            ),
-                                          ],
-                                        ),
-                                      )),
-                                ],
-                                onChanged: (v) {
-                                  setState(() {
-                                    _selectedParentCategoryId = v;
-                                    _selectedSubcategoryId = null;
-                                  });
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _DropdownField<String?>(
-                                label: 'Subcategory',
-                                value: _selectedSubcategoryId,
-                                items: [
-                                  const DropdownMenuItem(
-                                    value: null,
-                                    child: Text('All / General', style: TextStyle(color: AppColors.darkTextSecondary, fontSize: 13)),
-                                  ),
-                                  ...subcategories.map((sub) => DropdownMenuItem(
-                                        value: sub.id,
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            CategoryIcon(category: sub, size: 16),
-                                            const SizedBox(width: 6),
-                                            Flexible(
-                                              child: Text(sub.name, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
-                                            ),
-                                          ],
-                                        ),
-                                      )),
-                                ],
-                                onChanged: (v) => setState(() => _selectedSubcategoryId = v),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                      ] else ...[
-                        _DropdownField<String?>(
-                          label: 'Category',
-                          value: _selectedParentCategoryId,
-                          items: [
-                            const DropdownMenuItem(value: null, child: Text('No Category')),
-                            ...parentCategories.map((c) => DropdownMenuItem(
-                                  value: c.id,
-                                  child: Row(
-                                    children: [
-                                      CategoryIcon(category: c, size: 18),
-                                      const SizedBox(width: 8),
-                                      Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                                    ],
-                                  ),
-                                )),
-                          ],
-                          onChanged: (v) {
-                            setState(() {
-                              _selectedParentCategoryId = v;
-                              _selectedSubcategoryId = null;
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: NewCategoryChip(onPressed: _createCategory),
-                        ),
+                      CategoryPickerPair(
+                        type: _type == 'income' ? 'income' : 'expense',
+                        categoryId: _selectedParentCategoryId,
+                        subcategoryId: _selectedSubcategoryId,
+                        onChanged: (cat, sub) => setState(() {
+                          _selectedParentCategoryId = cat;
+                          _selectedSubcategoryId = sub;
+                        }),
                       ),
+                      const SizedBox(height: 12),
                     ],
 
                     // Split Bill with Friends Section (Expense only)

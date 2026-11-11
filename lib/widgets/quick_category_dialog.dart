@@ -9,41 +9,48 @@ import 'category_icon.dart';
 
 /// Opens a small dialog that creates a category of [type] ('income' or
 /// 'expense') and returns it once saved, or null when cancelled.
+///
+/// [initialName] prefills the name. [parentId] presets the parent; with
+/// [lockParent] the parent can't be changed (used for subcategories).
+/// Passing [existing] opens the dialog in edit mode: it updates that
+/// category instead of creating one.
 Future<Category?> showQuickCategoryDialog({
   required BuildContext context,
   required WidgetRef ref,
   required String type,
+  String? initialName,
+  String? parentId,
+  bool lockParent = false,
+  Category? existing,
 }) {
   return showDialog<Category>(
     context: context,
-    builder: (_) => _QuickCategoryDialog(ref: ref, type: type),
+    builder: (_) => _QuickCategoryDialog(
+      ref: ref,
+      type: existing?.type ?? type,
+      initialName: initialName,
+      parentId: existing?.parentId ?? parentId,
+      lockParent: lockParent || existing != null,
+      existing: existing,
+    ),
   );
-}
-
-/// The "+ New" chip shown next to category pickers.
-class NewCategoryChip extends StatelessWidget {
-  final VoidCallback onPressed;
-  const NewCategoryChip({super.key, required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return ActionChip(
-      avatar: const Icon(Icons.add_rounded, size: 16, color: AppColors.primary),
-      label: const Text('New category',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary)),
-      backgroundColor: AppColors.primary.withValues(alpha: 0.10),
-      side: BorderSide(color: AppColors.primary.withValues(alpha: 0.35)),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      visualDensity: VisualDensity.compact,
-      onPressed: onPressed,
-    );
-  }
 }
 
 class _QuickCategoryDialog extends StatefulWidget {
   final WidgetRef ref;
   final String type;
-  const _QuickCategoryDialog({required this.ref, required this.type});
+  final String? initialName;
+  final String? parentId;
+  final bool lockParent;
+  final Category? existing;
+  const _QuickCategoryDialog({
+    required this.ref,
+    required this.type,
+    this.initialName,
+    this.parentId,
+    this.lockParent = false,
+    this.existing,
+  });
 
   @override
   State<_QuickCategoryDialog> createState() => _QuickCategoryDialogState();
@@ -57,6 +64,27 @@ class _QuickCategoryDialogState extends State<_QuickCategoryDialog> {
   bool _showEmoji = false;
   bool _saving = false;
   String? _error;
+
+  bool get _editing => widget.existing != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existing;
+    if (e != null) {
+      _nameCtrl.text = e.name;
+      _icon = e.icon.isNotEmpty ? e.icon : '📦';
+      _color = Color(e.colorValue);
+      _parentId = (e.parentId == null || e.parentId!.isEmpty) ? null : e.parentId;
+    } else {
+      _nameCtrl.text = widget.initialName?.trim() ?? '';
+      _parentId = widget.parentId;
+      if (_parentId != null) {
+        final parent = widget.ref.read(categoriesProvider).where((c) => c.id == _parentId).firstOrNull;
+        if (parent != null) _color = Color(parent.colorValue);
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -99,6 +127,16 @@ class _QuickCategoryDialogState extends State<_QuickCategoryDialog> {
       return;
     }
     setState(() => _saving = true);
+    final existing = widget.existing;
+    if (existing != null) {
+      existing
+        ..name = name
+        ..icon = _icon
+        ..colorValue = _color.toARGB32();
+      await widget.ref.read(categoriesProvider.notifier).update(existing);
+      if (mounted) Navigator.pop(context, existing);
+      return;
+    }
     final cat = Category(
       id: '',
       name: name,
@@ -121,7 +159,13 @@ class _QuickCategoryDialogState extends State<_QuickCategoryDialog> {
         .toList();
 
     return AlertDialog(
-      title: Text(widget.type == 'income' ? 'New income category' : 'New expense category'),
+      title: Text(_editing
+          ? 'Edit category'
+          : widget.lockParent && _parentId != null
+              ? 'New subcategory'
+              : widget.type == 'income'
+                  ? 'New income category'
+                  : 'New expense category'),
       content: SizedBox(
         width: 380,
         child: SingleChildScrollView(
@@ -255,7 +299,9 @@ class _QuickCategoryDialogState extends State<_QuickCategoryDialog> {
                         ),
                       )),
                 ],
-                onChanged: (v) => setState(() {
+                onChanged: widget.lockParent
+                    ? null
+                    : (v) => setState(() {
                   _parentId = v;
                   final parent = parents.where((p) => p.id == v).firstOrNull;
                   if (parent != null) _color = Color(parent.colorValue);
@@ -269,7 +315,7 @@ class _QuickCategoryDialogState extends State<_QuickCategoryDialog> {
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         ElevatedButton(
           onPressed: _saving ? null : _save,
-          child: const Text('Create'),
+          child: Text(_editing ? 'Save' : 'Create'),
         ),
       ],
     );

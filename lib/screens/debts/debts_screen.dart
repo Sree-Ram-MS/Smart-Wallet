@@ -8,9 +8,8 @@ import '../../core/utils/utils.dart';
 import '../../models/models.dart';
 import '../../providers/providers.dart';
 import '../../widgets/app_drawer.dart';
-import '../../widgets/category_icon.dart';
 import '../../widgets/account_icon.dart';
-import '../../widgets/quick_category_dialog.dart';
+import '../../widgets/category_search_field.dart';
 import '../../core/layout/responsive.dart';
 
 /// Debts screen — "I Lent" (direction = 'lent')
@@ -736,14 +735,6 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
     final isLent = widget.direction == 'lent';
     final selectedAcc = widget.accounts.firstWhereOrNull((a) => a.id == _accountId);
     final catType = isLent ? 'expense' : 'income';
-    // Read live so a category created with "New category" shows up at once.
-    final allCategories = widget.ref.read(categoriesProvider);
-    final parentCategories = allCategories
-        .where((c) => (c.type == catType || catType.isEmpty) && (c.parentId == null || c.parentId!.isEmpty))
-        .toList();
-    final subcategories = _selectedParentCategoryId != null
-        ? allCategories.where((c) => c.parentId == _selectedParentCategoryId).toList()
-        : <Category>[];
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -812,134 +803,19 @@ class _DebtCreditSheetState extends State<_DebtCreditSheet> {
                       decoration: const InputDecoration(labelText: 'Account'),
                       dropdownColor: Theme.of(context).brightness == Brightness.dark ? AppColors.darkCard : AppColors.lightCard,
                     ),
-                    // Category & Subcategory Row
-                    if (_selectedParentCategoryId != null && subcategories.isNotEmpty) ...[
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<String?>(
-                              key: ValueKey('debt_parent_$_selectedParentCategoryId'),
-                              initialValue: _selectedParentCategoryId,
-                              isExpanded: true,
-                              items: [
-                                const DropdownMenuItem(value: null, child: Text('None', overflow: TextOverflow.ellipsis)),
-                                ...parentCategories.map((c) => DropdownMenuItem(
-                                      value: c.id,
-                                      child: Row(
-                                        children: [
-                                          CategoryIcon(category: c, size: 16),
-                                          const SizedBox(width: 6),
-                                          Expanded(
-                                            child: Text(c.name,
-                                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                                                overflow: TextOverflow.ellipsis),
-                                          ),
-                                        ],
-                                      ),
-                                    )),
-                              ],
-                              onChanged: (v) => setState(() {
-                                _selectedParentCategoryId = v;
-                                _selectedSubcategoryId = null;
-                              }),
-                              decoration: const InputDecoration(labelText: 'Category'),
-                              dropdownColor: Theme.of(context).brightness == Brightness.dark ? AppColors.darkCard : AppColors.lightCard,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: DropdownButtonFormField<String?>(
-                              key: ValueKey('debt_sub_$_selectedSubcategoryId'),
-                              initialValue: _selectedSubcategoryId,
-                              isExpanded: true,
-                              items: [
-                                DropdownMenuItem(
-                                  value: null,
-                                  child: Text(
-                                    'All / General',
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: Theme.of(context).brightness == Brightness.dark
-                                          ? AppColors.darkTextSecondary
-                                          : AppColors.lightTextSecondary,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
-                                ...subcategories.map((sub) => DropdownMenuItem(
-                                      value: sub.id,
-                                      child: Row(
-                                        children: [
-                                          CategoryIcon(category: sub, size: 16),
-                                          const SizedBox(width: 6),
-                                          Expanded(
-                                            child: Text(sub.name, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
-                                          ),
-                                        ],
-                                      ),
-                                    )),
-                              ],
-                              onChanged: (v) => setState(() => _selectedSubcategoryId = v),
-                              decoration: const InputDecoration(labelText: 'Subcategory'),
-                              dropdownColor: Theme.of(context).brightness == Brightness.dark ? AppColors.darkCard : AppColors.lightCard,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                    ] else ...[
-                      DropdownButtonFormField<String?>(
-                        key: ValueKey('debt_parent_$_selectedParentCategoryId'),
-                        initialValue: _selectedParentCategoryId,
-                        isExpanded: true,
-                        items: [
-                          const DropdownMenuItem(value: null, child: Text('No Category', overflow: TextOverflow.ellipsis)),
-                          ...parentCategories.map((c) => DropdownMenuItem(
-                                value: c.id,
-                                child: Row(
-                                  children: [
-                                    CategoryIcon(category: c, size: 18),
-                                    const SizedBox(width: 8),
-                                    Expanded(child: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
-                                  ],
-                                ),
-                              )),
-                        ],
-                        onChanged: (v) => setState(() {
-                          _selectedParentCategoryId = v;
-                          _selectedSubcategoryId = null;
-                        }),
-                        decoration: const InputDecoration(labelText: 'Category (Optional)'),
-                        dropdownColor: Theme.of(context).brightness == Brightness.dark ? AppColors.darkCard : AppColors.lightCard,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: NewCategoryChip(
-                          onPressed: () async {
-                            final cat = await showQuickCategoryDialog(
-                              context: context,
-                              ref: widget.ref,
-                              type: catType,
-                            );
-                            if (cat == null || !mounted) return;
-                            setState(() {
-                              if (cat.parentId != null && cat.parentId!.isNotEmpty) {
-                                _selectedParentCategoryId = cat.parentId;
-                                _selectedSubcategoryId = cat.id;
-                              } else {
-                                _selectedParentCategoryId = cat.id;
-                                _selectedSubcategoryId = null;
-                              }
-                            });
-                          },
-                        ),
-                      ),
+                    const SizedBox(height: 12),
+                    // Category & Subcategory: searchable, with create/edit inline
+                    CategoryPickerPair(
+                      type: catType,
+                      categoryLabel: 'Category (Optional)',
+                      categoryId: _selectedParentCategoryId,
+                      subcategoryId: _selectedSubcategoryId,
+                      onChanged: (cat, sub) => setState(() {
+                        _selectedParentCategoryId = cat;
+                        _selectedSubcategoryId = sub;
+                      }),
                     ),
+                    const SizedBox(height: 12),
                     // Start date
                     InkWell(
                       onTap: () async {
