@@ -84,6 +84,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       savings: savings,
       currency: currency,
     ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.2);
+    final Widget netWalletWithSync = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        netWalletCard,
+        const SizedBox(height: 12),
+        const DriveSyncCard(),
+      ],
+    );
 
     // My Accounts in Wallet (Credit Card Style)
     final List<Widget> accountsSection = [
@@ -307,7 +315,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             // Page 0: Main Dashboard Overview
             if (wide)
               _WideOverview(
-                netWalletCard: netWalletCard,
+                netWalletCard: netWalletWithSync,
                 accounts: accountsSection,
                 recentActivities: recentSection,
                 splitBills: splitSection,
@@ -322,7 +330,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     sliver: SliverList(
                       delegate: SliverChildListDelegate([
                         // 1. Top Net Wallet Card
-                        netWalletCard,
+                        netWalletWithSync,
                         const SizedBox(height: 20),
                         // 2. My Accounts in Wallet
                         ...accountsSection,

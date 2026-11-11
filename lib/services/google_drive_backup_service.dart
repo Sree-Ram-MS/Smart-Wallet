@@ -79,14 +79,64 @@ class GoogleDriveBackupService {
   static DateTime? lastDownloadedRemoteModified;
 
   // ─── Web token handling ─────────────────────────────────────────────────────
-  // GIS access tokens live for 1 hour and cannot be refreshed silently, so we
-  // remember when we got one and ask again (interactively) after it expires.
+  // GIS access tokens live for 1 hour and the plugin keeps them only in
+  // memory, so every page load used to ask for Drive access again. We now
+  // keep the token (and its expiry) in the local settings box (IndexedDB on
+  // the web) and reuse it until it expires. After that, one tap gets a new
+  // token: Google already has the grant, so the request uses prompt '' with
+  // the user's email as hint and no consent screen is shown.
+  static const String _webTokenKey = 'web_drive_access_token';
+  static const String _webTokenExpiryKey = 'web_drive_access_token_expiry';
+  static const String _webTokenEmailKey = 'web_drive_access_token_email';
+
+  static String? _webToken;
   static DateTime? _webTokenExpiry;
+  static bool _webTokenLoaded = false;
 
-  static bool get hasWebDriveToken =>
-      _webTokenExpiry != null && DateTime.now().isBefore(_webTokenExpiry!);
+  static void _loadWebToken() {
+    if (_webTokenLoaded) return;
+    _webTokenLoaded = true;
+    try {
+      final box = HiveService.settingsBox;
+      final token = box.get(_webTokenKey);
+      final expiry = box.get(_webTokenExpiryKey);
+      final email = box.get(_webTokenEmailKey);
+      final userEmail = HiveService.getUser()?.email;
+      if (token is String && token.isNotEmpty && expiry is String && email == userEmail) {
+        _webToken = token;
+        _webTokenExpiry = DateTime.tryParse(expiry);
+      }
+    } catch (_) {}
+  }
 
-  static void invalidateWebToken() => _webTokenExpiry = null;
+  static void _saveWebToken(String token) {
+    _webToken = token;
+    // Tokens last 3600 s; stop using them a few minutes early.
+    _webTokenExpiry = DateTime.now().add(const Duration(minutes: 55));
+    try {
+      final box = HiveService.settingsBox;
+      box.put(_webTokenKey, token);
+      box.put(_webTokenExpiryKey, _webTokenExpiry!.toIso8601String());
+      box.put(_webTokenEmailKey, HiveService.getUser()?.email ?? '');
+    } catch (_) {}
+  }
+
+  static bool get hasWebDriveToken {
+    _loadWebToken();
+    return _webToken != null && _webTokenExpiry != null && DateTime.now().isBefore(_webTokenExpiry!);
+  }
+
+  static void invalidateWebToken() {
+    _webToken = null;
+    _webTokenExpiry = null;
+    _webTokenLoaded = true;
+    try {
+      final box = HiveService.settingsBox;
+      box.delete(_webTokenKey);
+      box.delete(_webTokenExpiryKey);
+      box.delete(_webTokenEmailKey);
+    } catch (_) {}
+  }
 
   /// Web only: shows the Google authorization popup for the Drive scopes.
   /// MUST be called directly from a user gesture (button tap), otherwise the
@@ -94,10 +144,15 @@ class GoogleDriveBackupService {
   static Future<bool> authorizeWeb() async {
     try {
       final granted = await AuthService.googleSignIn.requestScopes(driveScopes);
-      if (granted) {
-        _webTokenExpiry = DateTime.now().add(const Duration(minutes: 55));
-      }
-      return granted;
+      if (!granted) return false;
+      final tokens = await GoogleSignInPlatform.instance.getTokens(
+        email: AuthService.googleSignIn.currentUser?.email ?? HiveService.getUser()?.email ?? '',
+        shouldRecoverAuth: false,
+      );
+      final token = tokens.accessToken;
+      if (token == null || token.isEmpty) return false;
+      _saveWebToken(token);
+      return true;
     } catch (e) {
       debugPrint('[GoogleDrive] Web authorization failed: $e');
       return false;
@@ -105,6 +160,7 @@ class GoogleDriveBackupService {
   }
 
   static Future<Map<String, String>> _webAuthHeaders() async {
+    if (hasWebDriveToken) return {'Authorization': 'Bearer $_webToken'};
     final tokens = await GoogleSignInPlatform.instance.getTokens(
       email: AuthService.googleSignIn.currentUser?.email ?? HiveService.getUser()?.email ?? '',
       shouldRecoverAuth: false,

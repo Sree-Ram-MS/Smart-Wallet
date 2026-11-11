@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../core/router/app_router.dart';
 import '../core/theme/app_colors.dart';
 import '../services/cloud_sync_service.dart';
@@ -270,6 +271,194 @@ class AppCloudSyncPrompter implements CloudSyncPrompter {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Dashboard card: auto sync toggle, "Sync latest", "Upload to Drive", and
+/// the last synced time. Shows a Connect action when Drive is not connected.
+class DriveSyncCard extends StatefulWidget {
+  const DriveSyncCard({super.key});
+
+  @override
+  State<DriveSyncCard> createState() => _DriveSyncCardState();
+}
+
+class _DriveSyncCardState extends State<DriveSyncCard> {
+  final _service = CloudSyncService.instance;
+
+  String _when(DateTime t) => t.toLocal().toString().split('.').first.substring(0, 16);
+
+  Future<bool> _confirm(String title, String body, String action) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(d, true), child: Text(action)),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 3)));
+  }
+
+  // Both actions start the Drive request inside the tap (web popup rule).
+  void _syncLatest() async {
+    final msg = await _service.syncLatest(
+      confirmOverwrite: (remote) => _confirm(
+        'Replace this device\'s data?',
+        'This device has changes that were not uploaded. Restoring the Drive backup (saved ${_when(remote)}) '
+            'replaces them.',
+        'Restore from Drive',
+      ),
+    );
+    _toast(msg);
+  }
+
+  void _upload() async {
+    final msg = await _service.uploadNow(
+      confirmOverwrite: (remote) => _confirm(
+        'Overwrite the Drive backup?',
+        'The Drive backup was changed on another device (${_when(remote)}). Uploading replaces it with this '
+            'device\'s data, and those changes are lost.',
+        'Overwrite',
+      ),
+    );
+    _toast(msg);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ValueListenableBuilder<CloudSyncState>(
+      valueListenable: _service.state,
+      builder: (context, st, _) {
+        final guest = st.status == CloudSyncStatus.disabled;
+        final needsAuth = st.status == CloudSyncStatus.needsAuth;
+        final busy = st.status == CloudSyncStatus.syncing;
+        final v = _visual(st.status);
+        final auto = _service.autoSync;
+
+        final String subtitle;
+        if (guest) {
+          subtitle = 'Sign in with Google to back up and sync across devices';
+        } else if (needsAuth) {
+          subtitle = 'Drive not connected';
+        } else {
+          subtitle = '${v.label} · last synced ${_ago(st.lastSynced)}';
+        }
+
+        final header = Row(
+          children: [
+            busy
+                ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: v.color))
+                : Icon(guest ? Icons.cloud_outlined : v.icon, size: 22, color: guest ? Colors.grey : v.color),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Google Drive sync',
+                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+                ],
+              ),
+            ),
+            if (!guest && !needsAuth) ...[
+              Text('Auto', style: theme.textTheme.bodySmall),
+              Switch(
+                value: auto,
+                onChanged: busy
+                    ? null
+                    : (val) async {
+                        await _service.setAutoSync(val);
+                        if (mounted) setState(() {});
+                      },
+              ),
+            ],
+          ],
+        );
+
+        final Widget actions;
+        if (guest) {
+          actions = Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.login_rounded, size: 18),
+              label: const Text('Connect Drive'),
+              onPressed: () => context.go('/settings'),
+            ),
+          );
+        } else if (needsAuth) {
+          actions = Align(
+            alignment: Alignment.centerLeft,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.add_to_drive_rounded, size: 18),
+              label: const Text('Connect Drive'),
+              // Called straight from the tap so the browser allows the popup.
+              onPressed: () => _service.connectDriveAndSync(),
+            ),
+          );
+        } else {
+          actions = Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                icon: const Icon(Icons.cloud_download_rounded, size: 18),
+                label: const Text('Sync latest'),
+                onPressed: busy ? null : _syncLatest,
+              ),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.cloud_upload_rounded, size: 18),
+                label: const Text('Upload to Drive'),
+                onPressed: busy ? null : _upload,
+              ),
+            ],
+          );
+        }
+
+        final showMessage = st.message != null &&
+            (st.status == CloudSyncStatus.error ||
+                st.status == CloudSyncStatus.conflict ||
+                st.status == CloudSyncStatus.needsPassword ||
+                st.status == CloudSyncStatus.offline ||
+                (st.status == CloudSyncStatus.pending && !auto));
+
+        return Container(
+          padding: const EdgeInsets.fromLTRB(14, 10, 10, 12),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: theme.dividerColor.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              header,
+              if (showMessage) ...[
+                const SizedBox(height: 4),
+                Text(st.message!, style: theme.textTheme.bodySmall?.copyWith(color: v.color)),
+              ],
+              const SizedBox(height: 10),
+              actions,
+            ],
+          ),
+        );
+      },
     );
   }
 }

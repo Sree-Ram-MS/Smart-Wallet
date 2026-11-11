@@ -60,6 +60,7 @@ class CloudSyncService {
   static const Duration debounce = Duration(seconds: 5);
   static const String _localModifiedKey = 'cloud_sync_local_modified';
   static const String _passwordKey = 'cloud_sync_password';
+  static const String _autoSyncKey = 'cloud_auto_sync';
 
   /// Settings keys that are not user data (changing them must not trigger an upload).
   static const Set<String> _syncedSettingsKeys = {'analytics_card_order'};
@@ -128,6 +129,31 @@ class CloudSyncService {
         lastSynced: GoogleDriveBackupService.lastCloudSyncTime, message: message);
   }
 
+  /// Auto sync (upload ~5 s after changes, pull on start). On by default.
+  bool get autoSync {
+    final v = HiveService.settingsBox.get(_autoSyncKey);
+    return v is bool ? v : true;
+  }
+
+  Future<void> setAutoSync(bool value) async {
+    await HiveService.settingsBox.put(_autoSyncKey, value);
+    if (!value) {
+      _debounceTimer?.cancel();
+      _retryTimer?.cancel();
+      _setIdle();
+    } else {
+      await syncNow(initial: true);
+    }
+  }
+
+  /// Status to show while auto sync is off and nothing is running.
+  void _setIdle() {
+    if (!isGoogleUser) return _set(CloudSyncStatus.disabled);
+    if (state.value.status == CloudSyncStatus.needsAuth) return;
+    _set(_hasUnsyncedLocalChanges ? CloudSyncStatus.pending : CloudSyncStatus.synced,
+        message: _hasUnsyncedLocalChanges ? 'Auto sync is off. Upload to Drive to save these changes.' : null);
+  }
+
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
 
   /// Start watching local data and do the initial pull/push. Safe to call
@@ -153,6 +179,10 @@ class CloudSyncService {
           if (_syncedSettingsKeys.contains(e.key)) _onLocalChange();
         }),
       ]);
+    }
+    if (!autoSync) {
+      _setIdle();
+      return;
     }
     await syncNow(initial: true);
   }
@@ -193,6 +223,10 @@ class CloudSyncService {
       _set(CloudSyncStatus.pending);
     }
     _debounceTimer?.cancel();
+    if (!autoSync) {
+      _setIdle();
+      return;
+    }
     _debounceTimer = Timer(debounce, () => syncNow());
   }
 
@@ -301,6 +335,7 @@ class CloudSyncService {
 
   void _scheduleRetry() {
     _retryTimer?.cancel();
+    if (!autoSync) return;
     _retryTimer = Timer(const Duration(seconds: 60), () => syncNow());
   }
 
@@ -360,6 +395,96 @@ class CloudSyncService {
     await HiveService.settingsBox.delete(_localModifiedKey);
     onDataReplaced?.call();
     _set(CloudSyncStatus.synced);
+  }
+
+  // ─── Manual actions (dashboard sync card) ───────────────────────────────────
+
+  /// Web: make sure we hold a Drive token. Must start inside a tap handler
+  /// (the token request may open a short Google popup). Returns false if the
+  /// user did not grant access.
+  Future<bool> _ensureDriveAccess() async {
+    if (!kIsWeb || GoogleDriveBackupService.hasWebDriveToken) return true;
+    final ok = await GoogleDriveBackupService.authorizeWeb();
+    if (!ok) _set(CloudSyncStatus.needsAuth, message: 'Google Drive permission was not granted.');
+    return ok;
+  }
+
+  /// "Sync latest": pull the newest Drive backup and restore it with the
+  /// normal restore logic. When this device has changes that were never
+  /// uploaded, [confirmOverwrite] is asked first (false = keep local data).
+  /// Returns a short message for a snackbar.
+  Future<String> syncLatest({required Future<bool> Function(DateTime remoteModified) confirmOverwrite}) async {
+    if (!isGoogleUser) return 'Sign in with Google to sync.';
+    if (_busy) return 'A sync is already running.';
+    if (!await _ensureDriveAccess()) return 'Google Drive permission was not granted.';
+    _busy = true;
+    _set(CloudSyncStatus.syncing);
+    try {
+      final remote = await GoogleDriveBackupService.getLatestBackupInfoForSync();
+      if (remote == null) {
+        _setIdle();
+        return 'No backup on Google Drive yet. Use Upload to Drive first.';
+      }
+      final lastRemote = GoogleDriveBackupService.lastSyncedRemoteModified;
+      final remoteChanged =
+          lastRemote == null || remote.modifiedTime.isAfter(lastRemote.add(const Duration(seconds: 1)));
+      final localChanged = _hasUnsyncedLocalChanges || (lastRemote == null && _localHasUserData);
+      if (!remoteChanged && !localChanged) {
+        _set(CloudSyncStatus.synced);
+        return 'Already up to date with Google Drive.';
+      }
+      if (localChanged) {
+        final ok = await confirmOverwrite(remote.modifiedTime);
+        if (!ok) {
+          _setIdle();
+          return 'Kept this device\'s data.';
+        }
+      }
+      await _pull();
+      final s = state.value.status;
+      return s == CloudSyncStatus.synced ? 'Restored the latest Google Drive backup.' : (state.value.message ?? 'Sync stopped.');
+    } on DriveAuthRequiredException catch (e) {
+      _set(CloudSyncStatus.needsAuth, message: e.message);
+      return e.message;
+    } catch (e) {
+      _set(isNetworkError(e) ? CloudSyncStatus.offline : CloudSyncStatus.error, message: e.toString());
+      return isNetworkError(e) ? 'You are offline.' : 'Sync failed: $e';
+    } finally {
+      _busy = false;
+    }
+  }
+
+  /// "Upload to Drive": upload now. When Drive was changed by another device
+  /// since this device last synced, [confirmOverwrite] is asked first.
+  Future<String> uploadNow({required Future<bool> Function(DateTime remoteModified) confirmOverwrite}) async {
+    if (!isGoogleUser) return 'Sign in with Google to sync.';
+    if (_busy) return 'A sync is already running.';
+    if (!await _ensureDriveAccess()) return 'Google Drive permission was not granted.';
+    _busy = true;
+    _debounceTimer?.cancel();
+    _set(CloudSyncStatus.syncing);
+    try {
+      final remote = await GoogleDriveBackupService.getLatestBackupInfoForSync();
+      final lastRemote = GoogleDriveBackupService.lastSyncedRemoteModified;
+      if (remote != null &&
+          (lastRemote == null || remote.modifiedTime.isAfter(lastRemote.add(const Duration(seconds: 1))))) {
+        final ok = await confirmOverwrite(remote.modifiedTime);
+        if (!ok) {
+          _setIdle();
+          return 'Upload cancelled.';
+        }
+      }
+      await _upload();
+      return 'Uploaded to Google Drive.';
+    } on DriveAuthRequiredException catch (e) {
+      _set(CloudSyncStatus.needsAuth, message: e.message);
+      return e.message;
+    } catch (e) {
+      _set(isNetworkError(e) ? CloudSyncStatus.offline : CloudSyncStatus.error, message: e.toString());
+      return isNetworkError(e) ? 'You are offline.' : 'Upload failed: $e';
+    } finally {
+      _busy = false;
+    }
   }
 
   /// User chose "Pull from Drive" in the sync sheet.
